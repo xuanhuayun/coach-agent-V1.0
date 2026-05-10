@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createServerClient } from "@supabase/ssr";
+import { isMiddlewareDevAuthSkip } from "@/lib/dev-auth";
 
 function createSupabaseMiddlewareClient(request: NextRequest) {
   let response = NextResponse.next({ request: { headers: request.headers } });
@@ -32,6 +33,10 @@ function createSupabaseMiddlewareClient(request: NextRequest) {
 }
 
 export async function middleware(request: NextRequest) {
+  if (isMiddlewareDevAuthSkip()) {
+    return NextResponse.next({ request: { headers: request.headers } });
+  }
+
   const { supabase, response } = createSupabaseMiddlewareClient(request);
 
   // Allow the app to boot without Supabase configured (useful for UI dev).
@@ -63,7 +68,7 @@ export async function middleware(request: NextRequest) {
   }
 
   if (user && isAuthRoute) {
-    return NextResponse.redirect(new URL("/sessions/new", request.url));
+    return NextResponse.redirect(new URL("/bookings", request.url));
   }
 
   return response;

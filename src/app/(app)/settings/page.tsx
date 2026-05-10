@@ -1,167 +1,154 @@
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 import { requireUser } from "@/lib/supabase/guards";
+import { getLang } from "@/lib/i18n-server";
+import { dict } from "@/lib/i18n";
+import { LangToggle } from "@/components/LangToggle";
+import { InfoTip } from "@/components/InfoTip";
+import { toastUrl } from "@/lib/toast";
+import { SettingsActionsClient } from "./SettingsActionsClient";
 
 async function createVenue(formData: FormData) {
   "use server";
   const name = String(formData.get("venueName") ?? "").trim();
   const address = String(formData.get("venueAddress") ?? "").trim();
-  if (!name) return;
+  if (!name) redirect(toastUrl("/settings", "error", "场地名称必填。"));
 
   const { supabase, user } = await requireUser();
-  await supabase.from("venues").insert({
+  const { error } = await supabase.from("venues").insert({
     user_id: user.id,
     name,
     address: address || null,
   });
+  if (error) {
+    const msg = String((error as any)?.message ?? "");
+    const code = String((error as any)?.code ?? "");
+    if (code === "23505" || msg.toLowerCase().includes("duplicate") || msg.toLowerCase().includes("unique")) {
+      redirect(toastUrl("/settings", "error", "添加失败：这个场地名称已存在。"));
+    }
+    if (msg.toLowerCase().includes("row-level security") || msg.toLowerCase().includes("permission")) {
+      redirect(toastUrl("/settings", "error", "添加失败：权限不足（RLS）。请确认已登录且策略已启用。"));
+    }
+    redirect(toastUrl("/settings", "error", `添加失败：${msg || "请稍后重试。"}`));
+  }
   revalidatePath("/settings");
+  redirect(toastUrl("/settings", "success", "已添加。"));
 }
 
 async function deleteVenue(formData: FormData) {
   "use server";
   const id = String(formData.get("id") ?? "");
-  if (!id) return;
+  if (!id) redirect(toastUrl("/settings", "error", "删除失败。"));
   const { supabase } = await requireUser();
-  await supabase.from("venues").delete().eq("id", id);
+
+  const { data: anySession } = await supabase
+    .from("sessions")
+    .select("id")
+    .eq("venue_id", id)
+    .limit(1);
+  if ((anySession ?? []).length > 0) {
+    redirect(toastUrl("/settings", "error", "这个场地已经被约过/上过课，不能删除。"));
+  }
+
+  const { error } = await supabase.from("venues").delete().eq("id", id);
+  if (error) redirect(toastUrl("/settings", "error", "删除失败，请稍后重试。"));
   revalidatePath("/settings");
+  redirect(toastUrl("/settings", "success", "已删除。"));
 }
 
 async function upsertLessonMode(formData: FormData) {
   "use server";
   const code = String(formData.get("code") ?? "").trim();
-  const label = String(formData.get("label") ?? "").trim();
   const price = Number(formData.get("price") ?? 0);
-  if (!code || !label || Number.isNaN(price) || price < 0) return;
+  if (!code || Number.isNaN(price) || price < 0) {
+    redirect(toastUrl("/settings", "error", "价格格式不正确。"));
+  }
+
+  const fixedLabel =
+    code === "1:1"
+      ? "一对一"
+      : code === "1:2"
+        ? "一对二"
+        : code === "1:3"
+          ? "一对三"
+          : code === "1:4"
+            ? "一对四"
+            : code;
 
   const { supabase, user } = await requireUser();
-  await supabase.from("lesson_modes").upsert(
+  const { error } = await supabase.from("lesson_modes").upsert(
     {
       user_id: user.id,
       code,
-      label,
+      label: fixedLabel,
       default_price_cents: Math.round(price * 100),
     },
     { onConflict: "user_id,code" },
   );
+  if (error) redirect(toastUrl("/settings", "error", "保存失败，请稍后重试。"));
   revalidatePath("/settings");
+  redirect(toastUrl("/settings", "success", "保存成功。"));
 }
 
 export default async function SettingsPage() {
   const { supabase } = await requireUser();
+  const lang = await getLang();
+  const d = dict[lang];
 
   const [{ data: venues }, { data: modes }] = await Promise.all([
     supabase.from("venues").select("*").order("created_at", { ascending: false }),
-    supabase
-      .from("lesson_modes")
-      .select("*")
-      .order("code", { ascending: true }),
+    supabase.from("lesson_modes").select("*").order("code", { ascending: true }),
   ]);
 
   return (
     <div className="max-w-4xl space-y-10">
       <div>
-        <h1 className="text-xl font-semibold tracking-tight">设置</h1>
-        <p className="mt-2 text-sm text-zinc-600">
-          设置场地列表、上课模式价格（1:1 / 1:2 / 1:3 / 1:4 每节课多少钱）。
-        </p>
+        <div className="flex flex-wrap items-center gap-2">
+          <h1 className="text-lg font-semibold tracking-tight">{d.nav_settings}</h1>
+          <InfoTip text={`${d.currencyHint} · ${d.pricePerPerson}`} />
+        </div>
       </div>
 
-      <section className="rounded-2xl border border-zinc-200 bg-white p-6">
-        <h2 className="text-sm font-semibold text-zinc-900">场地</h2>
-        <form action={createVenue} className="mt-4 grid gap-3 sm:grid-cols-5">
-          <input
-            name="venueName"
-            placeholder="场地名称（例如：XX 体育馆）"
-            className="sm:col-span-2 rounded-xl border border-zinc-300 px-3 py-2 text-sm outline-none focus:border-zinc-400"
-          />
-          <input
-            name="venueAddress"
-            placeholder="地址（可选）"
-            className="sm:col-span-2 rounded-xl border border-zinc-300 px-3 py-2 text-sm outline-none focus:border-zinc-400"
-          />
-          <button className="rounded-xl bg-zinc-900 px-4 py-2 text-sm font-medium text-white">
-            添加
-          </button>
-        </form>
-
-        <div className="mt-5 divide-y divide-zinc-100 rounded-xl border border-zinc-100">
-          {(venues ?? []).length === 0 ? (
-            <div className="p-4 text-sm text-zinc-600">还没有场地。</div>
-          ) : (
-            (venues ?? []).map((v) => (
-              <div key={v.id} className="flex items-center justify-between p-4">
-                <div className="min-w-0">
-                  <div className="truncate text-sm font-medium text-zinc-900">
-                    {v.name}
-                  </div>
-                  {v.address && (
-                    <div className="truncate text-xs text-zinc-500">
-                      {v.address}
-                    </div>
-                  )}
-                </div>
-                <form action={deleteVenue}>
-                  <input type="hidden" name="id" value={v.id} />
-                  <button className="text-sm text-zinc-600 hover:text-zinc-900">
-                    删除
-                  </button>
-                </form>
-              </div>
-            ))
-          )}
+      <section className="rounded-2xl border border-slate-200 bg-white p-6">
+        <div className="flex items-center gap-2">
+          <h2 className="text-sm font-semibold text-slate-900">
+            {lang === "zh" ? "设置" : "Settings"}
+          </h2>
+          <InfoTip text={`${d.currencyHint} · ${d.pricePerPerson}`} />
         </div>
       </section>
 
-      <section className="rounded-2xl border border-zinc-200 bg-white p-6">
-        <h2 className="text-sm font-semibold text-zinc-900">上课模式价格</h2>
-        <p className="mt-1 text-xs text-zinc-500">
-          价格单位：人民币/每节课（会存为分）。
-        </p>
+      <SettingsActionsClient
+        lang={lang}
+        venues={(venues ?? []).map((v: any) => ({ id: v.id, name: v.name, address: v.address ?? null }))}
+        modes={(modes ?? []).map((m: any) => ({ id: m.id, code: m.code, default_price_cents: m.default_price_cents }))}
+        createVenue={createVenue}
+        deleteVenue={deleteVenue}
+        upsertLessonMode={upsertLessonMode}
+      />
 
-        <div className="mt-4 grid gap-3">
-          {["1:1", "1:2", "1:3", "1:4"].map((code) => {
-            const existing = (modes ?? []).find((m) => m.code === code);
-            const price =
-              existing?.default_price_cents != null
-                ? (existing.default_price_cents / 100).toFixed(0)
-                : "";
-            const label =
-              existing?.label ??
-              (code === "1:1"
-                ? "一对一"
-                : code === "1:2"
-                  ? "一对二"
-                  : code === "1:3"
-                    ? "一对三"
-                    : "一对四");
-
-            return (
-              <form
-                key={code}
-                action={upsertLessonMode}
-                className="grid items-center gap-3 rounded-xl border border-zinc-200 p-4 sm:grid-cols-5"
-              >
-                <input type="hidden" name="code" value={code} />
-                <div className="text-sm font-medium text-zinc-900">{code}</div>
-                <input
-                  name="label"
-                  defaultValue={label}
-                  className="rounded-xl border border-zinc-300 px-3 py-2 text-sm outline-none focus:border-zinc-400"
-                />
-                <input
-                  name="price"
-                  defaultValue={price}
-                  placeholder="价格"
-                  className="rounded-xl border border-zinc-300 px-3 py-2 text-sm outline-none focus:border-zinc-400"
-                  inputMode="numeric"
-                />
-                <button className="rounded-xl bg-zinc-900 px-4 py-2 text-sm font-medium text-white">
-                  保存
-                </button>
-              </form>
-            );
-          })}
+      <section className="rounded-2xl border border-slate-200 bg-white p-6">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <h2 className="text-sm font-semibold text-slate-900">{d.language}</h2>
+            <InfoTip
+              side="top"
+              text={
+                lang === "zh"
+                  ? "切换一次就会记住（保存在浏览器里），不用每次都调。"
+                  : "Saved in a browser cookie."
+              }
+            />
+          </div>
+          <LangToggle value={lang} />
         </div>
       </section>
+
+      <div className="pt-2 text-xs text-slate-500">
+        {lang === "zh"
+          ? "有其他需求或问题，可以联系管理员 8193 4087。"
+          : "For questions or requests, contact admin: 8193 4087."}
+      </div>
     </div>
   );
 }

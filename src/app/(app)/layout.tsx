@@ -1,48 +1,89 @@
-import Link from "next/link";
+import { MobileTabBar } from "@/components/MobileTabBar";
+import { TopModuleNav } from "@/components/TopModuleNav";
+import { ToastBar } from "@/components/ToastBar";
+import { getLang } from "@/lib/i18n-server";
+import { dict } from "@/lib/i18n";
 
 const nav = [
-  { href: "/sessions/new", label: "课后记录" },
-  { href: "/students", label: "学员" },
-  { href: "/revenue", label: "当月收入" },
-  { href: "/settings", label: "设置" },
+  { href: "/bookings", key: "nav_bookings" },
+  { href: "/sessions", key: "nav_session_list" },
+  { href: "/students", key: "nav_students" },
+  { href: "/revenue", key: "nav_revenue" },
+  { href: "/settings", key: "nav_settings" },
 ] as const;
 
-export default function AppLayout({ children }: { children: React.ReactNode }) {
+export default async function AppLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  const lang = await getLang();
+  const d = dict[lang];
+
+  const mobileLabels = {
+    "/bookings": d.nav_bookings,
+    "/sessions": d.nav_session_list,
+    "/students": d.nav_students,
+    "/revenue": d.nav_revenue,
+    "/settings": d.nav_settings,
+  } as const;
+
   return (
-    <div className="min-h-screen bg-zinc-50 text-zinc-900">
-      <div className="mx-auto flex min-h-screen max-w-6xl">
-        <aside className="hidden w-56 flex-col gap-1 border-r border-zinc-200 bg-white p-4 sm:flex">
-          <div className="mb-2">
-            <div className="text-sm font-semibold tracking-tight">
-              Coach Agent
+    <div className="min-h-dvh text-slate-900">
+      <div className="mx-auto min-h-dvh max-w-6xl">
+        <header className="sticky top-0 z-40 border-b border-slate-200/90 bg-white/80 px-4 py-3 shadow-sm shadow-slate-200/30 backdrop-blur-md sm:px-6">
+          <div className="space-y-2">
+            <div className="flex items-start justify-between gap-4">
+              <div className="min-w-0">
+                <div className="text-sm font-bold text-slate-700">{d.appName}</div>
+                <div className="text-xs font-medium text-slate-500">
+                  {d.appSubtitle}
+                </div>
+              </div>
             </div>
-            <div className="text-xs text-zinc-500">羽毛球教练工作台</div>
+
+            <div className="hidden sm:block">
+              <TopModuleNav
+                items={[
+                  {
+                    href: "/bookings",
+                    label: d.nav_bookings,
+                    activePrefix: "/bookings",
+                  },
+                  {
+                    href: "/sessions",
+                    label: d.nav_session_list,
+                    activePrefix: "/sessions",
+                  },
+                  {
+                    href: "/students",
+                    label: d.nav_students,
+                    activePrefix: "/students",
+                  },
+                  {
+                    href: "/revenue",
+                    label: d.nav_revenue,
+                    activePrefix: "/revenue",
+                  },
+                  {
+                    href: "/settings",
+                    label: d.nav_settings,
+                    activePrefix: "/settings",
+                  },
+                ]}
+              />
+            </div>
           </div>
+        </header>
 
-          <nav className="flex flex-col gap-1">
-            {nav.map((item) => (
-              <Link
-                key={item.href}
-                href={item.href}
-                className="rounded-lg px-3 py-2 text-sm text-zinc-700 hover:bg-zinc-100 hover:text-zinc-900"
-              >
-                {item.label}
-              </Link>
-            ))}
-          </nav>
-        </aside>
+        <ToastBar />
 
-        <main className="flex min-w-0 flex-1 flex-col">
-          <header className="flex items-center justify-between border-b border-zinc-200 bg-white px-4 py-3 sm:hidden">
-            <div className="text-sm font-semibold">Coach Agent</div>
-            <Link href="/settings" className="text-sm text-zinc-700">
-              设置
-            </Link>
-          </header>
-          <div className="flex-1 p-4 sm:p-8">{children}</div>
+        <main className="px-4 py-5 sm:px-6 sm:py-8 pb-[calc(5.25rem+env(safe-area-inset-bottom))]">
+          {children}
         </main>
       </div>
+
+      <MobileTabBar labels={mobileLabels} />
     </div>
   );
 }
-

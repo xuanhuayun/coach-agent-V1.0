@@ -1,7 +1,10 @@
 import "server-only";
 
+import type { User } from "@supabase/supabase-js";
 import { redirect } from "next/navigation";
+import { isDevAuthBypass } from "@/lib/dev-auth";
 import {
+  createSupabaseAdminForDev,
   createSupabaseServerClient,
   isSupabaseConfigured,
 } from "@/lib/supabase/server";
@@ -9,6 +12,12 @@ import {
 export async function requireUser() {
   if (!isSupabaseConfigured()) {
     redirect("/login");
+  }
+
+  if (isDevAuthBypass()) {
+    const devId = process.env.COACH_AGENT_DEV_USER_ID!;
+    const user = { id: devId } as User;
+    return { supabase: createSupabaseAdminForDev(), user };
   }
 
   const supabase = await createSupabaseServerClient();

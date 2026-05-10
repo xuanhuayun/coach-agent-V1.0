@@ -1,0 +1,68 @@
+import { addMonths, endOfMonth, format, parseISO, startOfMonth } from "date-fns";
+
+/** Calendar date YYYY-MM-DD in Asia/Singapore. */
+export function singaporeTodayYmd(now = new Date()): string {
+  return now.toLocaleDateString("en-CA", { timeZone: "Asia/Singapore" });
+}
+
+/** UTC ISO bounds for the current Singapore calendar day: [start, end). */
+export function singaporeTodayBoundsUtcIso(now = new Date()): { startIso: string; endIso: string } {
+  const ymd = singaporeTodayYmd(now); // YYYY-MM-DD in Asia/Singapore
+  const [y, m, d] = ymd.split("-").map((x) => Number(x));
+  // Singapore is UTC+8, no DST. Singapore midnight == UTC previous day 16:00.
+  const startUtcMs = Date.UTC(y, m - 1, d, 0, 0, 0) - 8 * 3600_000;
+  const endUtcMs = startUtcMs + 24 * 3600_000;
+  return { startIso: new Date(startUtcMs).toISOString(), endIso: new Date(endUtcMs).toISOString() };
+}
+
+/** UTC ISO bounds for a Singapore calendar day (YYYY-MM-DD): [start, end). */
+export function singaporeDayBoundsUtcIso(ymd: string): { startIso: string; endIso: string } {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(ymd.trim());
+  if (!m) return singaporeTodayBoundsUtcIso();
+  const y = Number(m[1]);
+  const mon = Number(m[2]);
+  const d = Number(m[3]);
+  const startUtcMs = Date.UTC(y, mon - 1, d, 0, 0, 0) - 8 * 3600_000;
+  const endUtcMs = startUtcMs + 24 * 3600_000;
+  return { startIso: new Date(startUtcMs).toISOString(), endIso: new Date(endUtcMs).toISOString() };
+}
+
+export function singaporeCurrentMonthRange(now = new Date()): {
+  fromStr: string;
+  toStr: string;
+} {
+  const today = singaporeTodayYmd(now);
+  const fromStr = `${today.slice(0, 7)}-01`;
+  const toStr = format(endOfMonth(parseISO(fromStr)), "yyyy-MM-dd");
+  return { fromStr, toStr };
+}
+
+export type FinancePreset = "month" | "quarter" | "year" | "custom";
+
+export function parseFinancePreset(s: string | undefined): FinancePreset {
+  if (s === "quarter" || s === "year" || s === "custom") return s;
+  return "month";
+}
+
+/** Range for finance stats (Singapore calendar). */
+export function rangeForPreset(preset: FinancePreset, now = new Date()): {
+  fromStr: string;
+  toStr: string;
+} {
+  const today = singaporeTodayYmd(now);
+  const y = Number(today.slice(0, 4));
+
+  if (preset === "month") {
+    return singaporeCurrentMonthRange(now);
+  }
+  if (preset === "quarter") {
+    const d = parseISO(today);
+    const start = startOfMonth(addMonths(d, -2));
+    const end = endOfMonth(d);
+    return { fromStr: format(start, "yyyy-MM-dd"), toStr: format(end, "yyyy-MM-dd") };
+  }
+  if (preset === "year") {
+    return { fromStr: `${y}-01-01`, toStr: `${y}-12-31` };
+  }
+  return singaporeCurrentMonthRange(now);
+}
