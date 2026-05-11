@@ -26,6 +26,7 @@ export type SessionHistoryRow = {
   id: string;
   session_date: string;
   content?: string | null;
+  next_booking_at?: string | null;
   price_cents?: number | null;
   duration_hours?: number | null;
   venues?: { name?: string; address?: string | null } | null;
