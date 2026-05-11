@@ -57,15 +57,15 @@ export default async function LogBookedSessionPage({
     return logBookedSession(id, formData);
   }
 
-  const start = new Date(session.next_booking_at);
-  const end = new Date(
-    start.getTime() +
-      (Number(session.next_booking_duration_hours ?? 2) || 2) * 3600_000,
-  );
   const venue = session.venues as any;
   const mode = session.lesson_modes as any;
   const venueText = venue?.name ?? (lang === "zh" ? "（未填场地）" : "(No venue)");
-  const modeText = mode ? `${mode.code} · ${mode.label}` : lang === "zh" ? "（未填模式）" : "(No mode)";
+  const modeCode = mode?.code ?? (lang === "zh" ? "—" : "—");
+  const durationHours = sessionDurationHours({
+    duration_hours: session.next_booking_duration_hours,
+    lesson_modes: mode,
+  });
+  const dateText = formatSingaporeDateHeading(String(session.next_booking_at), lang);
 
   return (
     <div className="max-w-3xl space-y-6">
