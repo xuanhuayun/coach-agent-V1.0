@@ -5,6 +5,14 @@ export function singaporeTodayYmd(now = new Date()): string {
   return now.toLocaleDateString("en-CA", { timeZone: "Asia/Singapore" });
 }
 
+/** Calendar date + weekday in Asia/Singapore from ISO or YYYY-MM-DD. */
+export function formatSingaporeDateHeading(value: string, lang: "zh" | "en"): string {
+  const raw = value.trim();
+  if (!raw) return "";
+  const iso = /^\d{4}-\d{2}-\d{2}$/.test(raw) ? `${raw}T12:00:00+08:00` : raw;
+  return formatBookingScheduleHeading(iso, lang);
+}
+
 /** Booking list heading: calendar date + weekday in Asia/Singapore. */
 export function formatBookingScheduleHeading(iso: string, lang: "zh" | "en"): string {
   const d = new Date(iso);

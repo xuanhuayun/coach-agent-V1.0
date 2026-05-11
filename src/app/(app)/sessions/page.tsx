@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { addDays, addMonths, format, parseISO } from "date-fns";
 import { enUS } from "date-fns/locale";
 import { requireUser } from "@/lib/supabase/guards";
@@ -15,6 +14,7 @@ import {
   fetchOverdueUnpaidPaymentRows,
   fetchRecentSessionPaymentRows,
 } from "@/lib/recent-session-payments";
+import { SessionHistoryListRow } from "@/components/SessionHistoryListRow";
 import { SessionLogPanel } from "./SessionLogPanel";
 
 function monthKeyFromYmd(ymd: string) {
@@ -200,67 +200,32 @@ export default async function SessionsPage({
                 : `${(pendingBooked ?? []).length} classes`}
             </div>
           </div>
-          <div className="space-y-2">
-            {(pendingBooked ?? []).map((s: any) => {
-              const start = new Date(s.next_booking_at);
-              const end = new Date(
-                start.getTime() +
-                  (Number(s.next_booking_duration_hours ?? 2) || 2) * 3600_000,
-              );
-              const venueText =
-                s.venues?.name ?? (lang === "zh" ? "（未填场地）" : "(No venue)");
-              const modeText = s.lesson_modes
-                ? `${s.lesson_modes.code} · ${s.lesson_modes.label}`
-                : lang === "zh"
-                  ? "（未填模式）"
-                  : "(No mode)";
-              const who = pendingBySession.get(s.id) ?? [];
-              return (
-                <Link
-                  key={s.id}
-                  href={`/sessions/log/${s.id}`}
-                  className="block rounded-2xl border border-slate-200 bg-white p-4 transition-colors hover:bg-slate-50"
-                >
-                  <div className="flex flex-wrap items-start justify-between gap-2">
-                    <div className="min-w-0">
-                      <div className="text-sm font-semibold text-slate-900">
-                        {start.toLocaleTimeString(lang === "zh" ? "zh-CN" : "en-SG", {
-                          hour: "2-digit",
-                          minute: "2-digit",
-                          hour12: false,
-                        })}
-                        {" — "}
-                        {end.toLocaleTimeString(lang === "zh" ? "zh-CN" : "en-SG", {
-                          hour: "2-digit",
-                          minute: "2-digit",
-                          hour12: false,
-                        })}
-                      </div>
-                      <div className="mt-1 text-sm text-slate-800/90">
-                        {venueText} · {modeText}
-                      </div>
-                      {who.length > 0 ? (
-                        <div className="mt-2 flex flex-wrap gap-2">
-                          {who.map((p) => (
-                            <span
-                              key={p.id}
-                              className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-sm font-medium text-slate-800"
-                            >
-                              {p.name}
-                            </span>
-                          ))}
-                        </div>
-                      ) : null}
-                    </div>
-                    <span className="shrink-0 text-xs font-medium text-sky-700">
-                      {lang === "zh" ? "去记录 →" : "Log →"}
-                    </span>
-                  </div>
-                </Link>
-              );
-            })}
-          </div>
-        </section>
+          <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
+            <ul className="divide-y divide-slate-100">
+              {(pendingBooked ?? []).map((s: any) => {
+                const sessionDate = String(s.next_booking_at);
+                const modeCode = s.lesson_modes?.code ?? (lang === "zh" ? "—" : "—");
+                const durationHours = sessionDurationHours({
+                  duration_hours: s.next_booking_duration_hours,
+                  lesson_modes: s.lesson_modes,
+                });
+                const studentNames = (pendingBySession.get(s.id) ?? []).map((p) => p.name);
+                return (
+                  <li key={s.id}>
+                    <SessionHistoryListRow
+                      lang={lang}
+                      href={`/sessions/log/${s.id}`}
+                      sessionDate={sessionDate}
+                      modeCode={modeCode}
+                      durationHours={durationHours}
+                      studentNames={studentNames}
+                      detailLabel={lang === "zh" ? "去记录 →" : "Log →"}
+                    />
+                  </li>
+                );
+              })}
+            </ul>
+          </div>        </section>
       ) : null}
 
       {overduePaymentRows.length > 0 ? (

@@ -1,7 +1,7 @@
 import Link from "next/link";
 import type { Lang } from "@/lib/i18n";
 import { formatLessonModeRatio } from "@/lib/lesson-mode";
-import { formatBookingScheduleHeading } from "@/lib/singapore-date";
+import { formatSingaporeDateHeading } from "@/lib/singapore-date";
 
 type StudentRef = { id: string; name: string };
 
@@ -22,7 +22,7 @@ export function BookingSessionListItem({
   remarks: string | null | undefined;
   lang: Lang;
 }) {
-  const dateText = formatBookingScheduleHeading(nextBookingAt, lang);
+  const dateText = formatSingaporeDateHeading(nextBookingAt, lang);
   const venueText = venueName ?? (lang === "zh" ? "（未填场地）" : "(No venue)");
   const ratioText = formatLessonModeRatio(modeCode, lang);
   const who = students.filter((student) => student.id && student.name);

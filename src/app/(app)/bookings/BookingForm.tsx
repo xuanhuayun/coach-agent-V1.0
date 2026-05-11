@@ -16,6 +16,7 @@ import {
   type BookingDraft,
 } from "@/lib/booking-draft";
 import { NextBookingPicker } from "@/components/NextBookingPicker";
+import { futureBookingStartError, isFutureBookingStart } from "@/lib/booking-time";
 
 type Venue = { id: string; name: string };
 type Mode = {
@@ -173,6 +174,11 @@ export function BookingForm({
           setFieldErr({
             time: lang === "zh" ? "约课时间格式不正确。" : "Invalid booking time.",
           });
+          return;
+        }
+        if (!isFutureBookingStart(at)) {
+          e.preventDefault();
+          setFieldErr({ time: futureBookingStartError(lang) });
           return;
         }
 

@@ -3,6 +3,9 @@ import { notFound } from "next/navigation";
 import { requireUser } from "@/lib/supabase/guards";
 import { getLang } from "@/lib/i18n-server";
 import { dict } from "@/lib/i18n";
+import { formatHours, sessionDurationHours } from "@/lib/lesson";
+import { formatLessonModeRatio } from "@/lib/lesson-mode";
+import { formatSingaporeDateHeading } from "@/lib/singapore-date";
 import { logBookedSession } from "../../actions";
 
 export default async function LogBookedSessionPage({
@@ -78,21 +81,9 @@ export default async function LogBookedSessionPage({
         </h1>
         <div className="mt-2 rounded-2xl border border-slate-200 bg-white p-4 text-sm text-slate-700">
           <div className="font-semibold text-slate-900">
-            {start.toLocaleTimeString(lang === "zh" ? "zh-CN" : "en-SG", {
-              hour: "2-digit",
-              minute: "2-digit",
-              hour12: false,
-            })}
-            {" — "}
-            {end.toLocaleTimeString(lang === "zh" ? "zh-CN" : "en-SG", {
-              hour: "2-digit",
-              minute: "2-digit",
-              hour12: false,
-            })}
+            {dateText} · {formatLessonModeRatio(modeCode, lang)} · {formatHours(durationHours, lang)}
           </div>
-          <div className="mt-1 text-sm text-slate-700">
-            {venueText} · {modeText}
-          </div>
+          <div className="mt-1 text-sm text-slate-700">{venueText}</div>
           {students.length > 0 ? (
             <div className="mt-2 flex flex-wrap gap-2">
               {students.map((s) => (

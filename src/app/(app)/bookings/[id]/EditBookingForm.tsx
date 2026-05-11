@@ -9,6 +9,7 @@ import {
 } from "@/lib/lesson-mode";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { NextBookingPicker } from "@/components/NextBookingPicker";
+import { futureBookingStartError, isFutureBookingStart } from "@/lib/booking-time";
 
 type Venue = { id: string; name: string };
 type Mode = { id: string; code: string; label: string; default_price_cents: number };
@@ -127,6 +128,11 @@ export function EditBookingForm({
           atIso = "";
         }
         if (!atIso) return;
+        if (!isFutureBookingStart(at)) {
+          e.preventDefault();
+          setSubmitErr(futureBookingStartError(lang));
+          return;
+        }
 
         e.preventDefault();
         try {

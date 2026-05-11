@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { isFutureBookingStart } from "@/lib/booking-time";
 import { requireUser } from "@/lib/supabase/guards";
 import { isPgRestMissingColumn } from "@/lib/session-queries";
 import { requiredCountFromModeCode, resolveModeDurationHours } from "@/lib/lesson-mode";
@@ -202,6 +203,12 @@ export async function logBookedSession(sessionId: string, formData: FormData) {
   const sessionDate = ymdInSingaporeFromIso(String(session.next_booking_at));
   if (!sessionDate) {
     redirect(toastUrl(`/sessions/log/${sessionId}`, "error", "约课时间格式不正确。"));
+  }
+  if (sessionDate > singaporeTodayYmd()) {
+    redirect(toastUrl(`/sessions/log/${sessionId}`, "error", "只能记录已发生的课程。"));
+  }
+  if (isFutureBookingStart(String(session.next_booking_at))) {
+    redirect(toastUrl(`/sessions/log/${sessionId}`, "error", "约课时间还没到，不能提前记录。"));
   }
 
   const { data: mode, error: modeError } = await fetchLessonModeById(

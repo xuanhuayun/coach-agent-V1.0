@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { isFutureBookingStart } from "@/lib/booking-time";
 import { requireUser } from "@/lib/supabase/guards";
 import { toastUrl } from "@/lib/toast";
 
@@ -199,6 +200,9 @@ export async function createBooking(formData: FormData) {
   const sessionDate = ymdInSingaporeFromIso(bookingIso);
   if (!sessionDate) {
     redirect(toastUrl("/bookings", "error", "约课时间格式不正确。"));
+  }
+  if (!isFutureBookingStart(nextBookingAt)) {
+    redirect(toastUrl("/bookings", "error", "约课时间必须是未来时间。"));
   }
 
   // Server-side conflict check (authoritative): no overlaps allowed for this coach.

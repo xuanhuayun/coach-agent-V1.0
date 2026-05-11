@@ -1,11 +1,8 @@
 "use client";
 
-import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { SessionHistoryListRow } from "@/components/SessionHistoryListRow";
 import type { Lang } from "@/lib/i18n";
-import { formatHours } from "@/lib/lesson";
-import { formatLessonModeRatio } from "@/lib/lesson-mode";
-import { formatSgdFromCents } from "@/lib/money";
 
 export type SessionHistoryListItem = {
   id: string;
@@ -127,32 +124,16 @@ export function SessionHistoryByMonth({
           <ul className="divide-y divide-slate-100">
             {active.sessions.map((s) => (
               <li key={s.id}>
-                <Link
+                <SessionHistoryListRow
+                  lang={lang}
                   href={`/sessions/${s.id}`}
-                  className="block p-4 transition-colors hover:bg-slate-50"
-                >
-                  <div className="flex flex-wrap items-start justify-between gap-2">
-                    <div className="min-w-0">
-                      <div className="text-sm font-semibold text-slate-900">
-                        {s.sessionDate} · {formatLessonModeRatio(s.modeCode, lang)} ·{" "}
-                        {formatHours(s.durationHours, lang)}
-                      </div>
-                      {s.studentNames.length > 0 ? (
-                        <div className="mt-1 text-xs text-slate-700">
-                          {lang === "zh" ? "学员" : "Students"}：
-                          {s.studentNames.join(lang === "zh" ? "、" : ", ")}
-                        </div>
-                      ) : null}
-                      {s.classRevenueCents > 0 ? (
-                        <div className="mt-1 text-xs text-slate-700">
-                          {lang === "zh" ? "本节课收入" : "Class revenue"}：
-                          {formatSgdFromCents(s.classRevenueCents)}
-                        </div>
-                      ) : null}
-                    </div>
-                    <span className="shrink-0 text-xs font-medium text-sky-700">{detailLabel}</span>
-                  </div>
-                </Link>
+                  sessionDate={s.sessionDate}
+                  modeCode={s.modeCode}
+                  durationHours={s.durationHours}
+                  studentNames={s.studentNames}
+                  detailLabel={detailLabel}
+                  classRevenueCents={s.classRevenueCents}
+                />
               </li>
             ))}
           </ul>

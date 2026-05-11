@@ -97,12 +97,11 @@ async function queryWithDurationFallback<T>(
 }
 
 export function isLoggedSessionHistoryRow(row: SessionHistoryRow): boolean {
-  const isPendingBooking =
-    row.content == null &&
-    row.next_booking_at != null &&
-    row.price_cents == null &&
-    (row.duration_hours == null || row.duration_hours === undefined);
-  return !isPendingBooking;
+  // Bookings from /bookings keep next_booking_at and no price snapshot until logged.
+  if (row.next_booking_at != null && row.price_cents == null) {
+    return false;
+  }
+  return true;
 }
 
 export async function querySessionHistory(

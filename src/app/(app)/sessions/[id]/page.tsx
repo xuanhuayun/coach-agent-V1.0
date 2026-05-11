@@ -11,7 +11,7 @@ import {
   querySessionStudentLinks,
   studentFromSessionStudentRow,
 } from "@/lib/session-queries";
-import { singaporeTodayYmd } from "@/lib/singapore-date";
+import { formatSingaporeDateHeading, singaporeTodayYmd } from "@/lib/singapore-date";
 
 export default async function SessionDetailPage({
   params,
@@ -79,7 +79,7 @@ export default async function SessionDetailPage({
           {d.session_detail}
         </h1>
         <p className="mt-1 text-sm font-medium text-slate-800/90">
-          {session.session_date}
+          {formatSingaporeDateHeading(String(session.session_date), lang)}
         </p>
         {locked && (
           <p className="mt-2 text-xs text-slate-500">
@@ -134,20 +134,7 @@ export default async function SessionDetailPage({
                 {lang === "zh" ? "下次约课" : "Next booking"}
               </dt>
               <dd className="mt-0.5 text-slate-900">
-                {(() => {
-                  const start = new Date(session.next_booking_at);
-                  const hours =
-                    typeof (session as any).next_booking_duration_hours === "number"
-                      ? (session as any).next_booking_duration_hours
-                      : Number((session as any).next_booking_duration_hours ?? 2);
-                  const end = new Date(start.getTime() + (Number.isFinite(hours) ? hours : 2) * 3600_000);
-                  const loc = lang === "zh" ? "zh-CN" : "en-SG";
-                  return `${start.toLocaleString(loc, { hour12: false })} ~ ${end.toLocaleTimeString(loc, {
-                    hour: "2-digit",
-                    minute: "2-digit",
-                    hour12: false,
-                  })}`;
-                })()}
+                {formatSingaporeDateHeading(String(session.next_booking_at), lang)}
               </dd>
             </div>
           )}
