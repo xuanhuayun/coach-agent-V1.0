@@ -182,7 +182,6 @@ export async function logBookedSession(sessionId: string, formData: FormData) {
   const { supabase, user } = await requireUser();
 
   const content = String(formData.get("content") ?? "").trim();
-  const improvements = String(formData.get("improvements") ?? "").trim();
 
   const { data: session } = await supabase
     .from("sessions")
@@ -236,7 +235,7 @@ export async function logBookedSession(sessionId: string, formData: FormData) {
     session_date: sessionDate,
     price_cents: priceCents,
     content: content || null,
-    improvements: improvements || null,
+    improvements: null,
     remarks: null,
     duration_hours: durationHours,
     next_booking_at: null,

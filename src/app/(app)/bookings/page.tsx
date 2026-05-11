@@ -3,6 +3,7 @@ import { addDays, parseISO, format } from "date-fns";
 import { requireUser } from "@/lib/supabase/guards";
 import { getLang } from "@/lib/i18n-server";
 import { dict } from "@/lib/i18n";
+import { sessionDurationHours } from "@/lib/lesson";
 import { singaporeDayBoundsUtcIso, singaporeTodayYmd } from "@/lib/singapore-date";
 import { sortLessonModes } from "@/lib/lesson-mode";
 import { ensureLessonModes, listLessonModes } from "@/lib/lesson-modes-server";
@@ -198,8 +199,11 @@ export default async function BookingsTodayPage({
               key={s.id}
               id={s.id}
               nextBookingAt={s.next_booking_at}
+              durationHours={sessionDurationHours({
+                duration_hours: s.next_booking_duration_hours,
+                lesson_modes: s.lesson_modes,
+              })}
               venueName={s.venues?.name}
-              modeCode={s.lesson_modes?.code}
               students={bySession.get(s.id) ?? []}
               remarks={s.remarks}
               lang={lang}
@@ -233,8 +237,11 @@ export default async function BookingsTodayPage({
                 key={s.id}
                 id={s.id}
                 nextBookingAt={s.next_booking_at}
+                durationHours={sessionDurationHours({
+                  duration_hours: s.next_booking_duration_hours,
+                  lesson_modes: s.lesson_modes,
+                })}
                 venueName={s.venues?.name}
-                modeCode={s.lesson_modes?.code}
                 students={futureBySession.get(s.id) ?? []}
                 remarks={s.remarks}
                 lang={lang}

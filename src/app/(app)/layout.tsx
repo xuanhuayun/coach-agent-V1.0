@@ -78,7 +78,7 @@ export default async function AppLayout({
 
         <ToastBar />
 
-        <main className="px-4 py-5 sm:px-6 sm:py-8 pb-[calc(5.25rem+env(safe-area-inset-bottom))]">
+        <main className="px-4 py-5 sm:px-6 sm:py-8 pb-[calc(6rem+env(safe-area-inset-bottom))]">
           {children}
         </main>
       </div>

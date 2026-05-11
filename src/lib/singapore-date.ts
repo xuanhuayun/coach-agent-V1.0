@@ -13,6 +13,41 @@ export function formatSingaporeDateHeading(value: string, lang: "zh" | "en"): st
   return formatBookingScheduleHeading(iso, lang);
 }
 
+function formatSingaporeClockTime(date: Date, lang: "zh" | "en"): string {
+  return date.toLocaleTimeString(lang === "zh" ? "zh-CN" : "en-SG", {
+    timeZone: "Asia/Singapore",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  });
+}
+
+/** Clock range in Asia/Singapore, e.g. 14:00–16:00. */
+export function formatSingaporeTimeRange(
+  startIso: string,
+  durationHours: number,
+  lang: "zh" | "en",
+): string {
+  const start = new Date(startIso);
+  if (Number.isNaN(start.getTime())) return "";
+  const hours = Number.isFinite(durationHours) && durationHours > 0 ? durationHours : 2;
+  const end = new Date(start.getTime() + hours * 3_600_000);
+  return `${formatSingaporeClockTime(start, lang)}–${formatSingaporeClockTime(end, lang)}`;
+}
+
+/** Booking list heading: calendar date + weekday + clock range in Asia/Singapore. */
+export function formatSingaporeScheduleHeadingWithTimeRange(
+  startIso: string,
+  durationHours: number,
+  lang: "zh" | "en",
+): string {
+  const datePart = formatBookingScheduleHeading(startIso, lang);
+  const timePart = formatSingaporeTimeRange(startIso, durationHours, lang);
+  if (!datePart) return timePart;
+  if (!timePart) return datePart;
+  return `${datePart} · ${timePart}`;
+}
+
 /** Booking list heading: calendar date + weekday in Asia/Singapore. */
 export function formatBookingScheduleHeading(iso: string, lang: "zh" | "en"): string {
   const d = new Date(iso);

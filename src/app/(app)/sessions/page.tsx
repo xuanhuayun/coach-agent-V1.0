@@ -220,6 +220,7 @@ export default async function SessionsPage({
                       durationHours={durationHours}
                       studentNames={studentNames}
                       detailLabel={lang === "zh" ? "去记录 →" : "Log →"}
+                      rowVariant="booking"
                     />
                   </li>
                 );

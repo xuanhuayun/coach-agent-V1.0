@@ -3,9 +3,8 @@ import { notFound } from "next/navigation";
 import { requireUser } from "@/lib/supabase/guards";
 import { getLang } from "@/lib/i18n-server";
 import { dict } from "@/lib/i18n";
-import { formatHours, sessionDurationHours } from "@/lib/lesson";
-import { formatLessonModeRatio } from "@/lib/lesson-mode";
-import { formatSingaporeDateHeading } from "@/lib/singapore-date";
+import { sessionDurationHours } from "@/lib/lesson";
+import { formatSingaporeScheduleHeadingWithTimeRange } from "@/lib/singapore-date";
 import { logBookedSession } from "../../actions";
 
 export default async function LogBookedSessionPage({
@@ -60,12 +59,15 @@ export default async function LogBookedSessionPage({
   const venue = session.venues as any;
   const mode = session.lesson_modes as any;
   const venueText = venue?.name ?? (lang === "zh" ? "（未填场地）" : "(No venue)");
-  const modeCode = mode?.code ?? (lang === "zh" ? "—" : "—");
   const durationHours = sessionDurationHours({
     duration_hours: session.next_booking_duration_hours,
     lesson_modes: mode,
   });
-  const dateText = formatSingaporeDateHeading(String(session.next_booking_at), lang);
+  const scheduleText = formatSingaporeScheduleHeadingWithTimeRange(
+    String(session.next_booking_at),
+    durationHours,
+    lang,
+  );
 
   return (
     <div className="max-w-3xl space-y-6">
@@ -80,9 +82,7 @@ export default async function LogBookedSessionPage({
           {lang === "zh" ? "记录已约课程" : "Log booked class"}
         </h1>
         <div className="mt-2 rounded-2xl border border-slate-200 bg-white p-4 text-sm text-slate-700">
-          <div className="font-semibold text-slate-900">
-            {dateText} · {formatLessonModeRatio(modeCode, lang)} · {formatHours(durationHours, lang)}
-          </div>
+          <div className="font-semibold text-slate-900">{scheduleText}</div>
           <div className="mt-1 text-sm text-slate-700">{venueText}</div>
           {students.length > 0 ? (
             <div className="mt-2 flex flex-wrap gap-2">
@@ -116,17 +116,6 @@ export default async function LogBookedSessionPage({
             rows={7}
             className="mt-2 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none focus:border-sky-600 focus:ring-2 focus:ring-sky-500/25"
             placeholder={lang === "zh" ? "这次：……\n下次：……" : "This: ...\nNext: ..."}
-          />
-        </div>
-
-        <div>
-          <label className="block text-sm font-medium text-slate-900">
-            {lang === "zh" ? "补充备注（可选）" : "Extra notes (optional)"}
-          </label>
-          <textarea
-            name="improvements"
-            rows={3}
-            className="mt-2 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none focus:border-sky-600 focus:ring-2 focus:ring-sky-500/25"
           />
         </div>
 
