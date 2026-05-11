@@ -2,6 +2,12 @@
 
 import { useMemo, useRef, useState } from "react";
 import type { Lang } from "@/lib/i18n";
+import {
+  formatLessonModeOption,
+  requiredCountFromModeCode,
+  resolveModeDurationHours,
+} from "@/lib/lesson-mode";
+import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { NextBookingPicker } from "@/components/NextBookingPicker";
 
 type Venue = { id: string; name: string };
@@ -29,6 +35,7 @@ export function EditBookingForm({
   initialRemarks,
   initialStudentIds,
   action,
+  deleteAction,
 }: {
   lang: Lang;
   sessionId: string;
@@ -42,8 +49,10 @@ export function EditBookingForm({
   initialRemarks: string | null;
   initialStudentIds: string[];
   action: (formData: FormData) => void;
+  deleteAction: (formData: FormData) => void;
 }) {
   const formRef = useRef<HTMLFormElement | null>(null);
+  const deleteSubmitRef = useRef<HTMLButtonElement | null>(null);
   const bypassSubmitRef = useRef(false);
 
   const [modeId, setModeId] = useState(initialModeId ?? "");
@@ -51,9 +60,13 @@ export function EditBookingForm({
   const [query, setQuery] = useState("");
   const [selectedIds, setSelectedIds] = useState<string[]>(initialStudentIds);
   const [submitErr, setSubmitErr] = useState<string | null>(null);
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [pickerDuration, setPickerDuration] = useState<"1" | "2">(
+    initialNextBookingDurationHours === 1 ? "1" : "2",
+  );
 
   const mode = useMemo(() => modes.find((m) => m.id === modeId) ?? null, [modes, modeId]);
-  const requiredCount = requiredCountFromCode(mode?.code);
+  const requiredCount = requiredCountFromModeCode(mode?.code);
   const mismatch = requiredCount != null && selectedIds.length !== requiredCount;
 
   const selectedSet = useMemo(() => new Set(selectedIds), [selectedIds]);
@@ -62,6 +75,18 @@ export function EditBookingForm({
     if (!q) return [];
     return students.filter((s) => s.name.toLowerCase().includes(q));
   }, [students, query]);
+
+  function onModeChange(nextModeId: string) {
+    const nextMode = modes.find((m) => m.id === nextModeId) ?? null;
+    const durationHours = nextMode ? resolveModeDurationHours(nextMode) : 2;
+    const nextRequired = requiredCountFromModeCode(nextMode?.code);
+    setModeId(nextModeId);
+    setPickerDuration(durationHours === 1 ? "1" : "2");
+    setSelectedIds((prev) =>
+      nextRequired && prev.length > nextRequired ? prev.slice(0, nextRequired) : prev,
+    );
+    setSubmitErr(null);
+  }
 
   function toggleStudent(id: string) {
     setSubmitErr(null);
@@ -82,6 +107,10 @@ export function EditBookingForm({
       ref={formRef}
       action={action}
       onSubmit={async (e) => {
+        const submitter = (e.nativeEvent as SubmitEvent).submitter;
+        if (submitter instanceof HTMLButtonElement && submitter.dataset.action === "delete") {
+          return;
+        }
         if (bypassSubmitRef.current) {
           bypassSubmitRef.current = false;
           return;
@@ -138,7 +167,7 @@ export function EditBookingForm({
         </h2>
       </div>
 
-      {submitErr ? <div className="text-sm text-red-600">{submitErr}</div> : null}
+      {submitErr ? <div className="select-text text-sm text-red-700">{submitErr}</div> : null}
 
       <div className="grid gap-4 sm:grid-cols-2">
         <div>
@@ -147,7 +176,7 @@ export function EditBookingForm({
             name="venueId"
             value={venueId}
             onChange={(e) => setVenueId(e.target.value)}
-            className="mt-2 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-cyan-600 focus:ring-2 focus:ring-cyan-500/25"
+            className="mt-2 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-sky-600 focus:ring-2 focus:ring-sky-500/25"
           >
             <option value="">{lang === "zh" ? "（不选）" : "(None)"}</option>
             {venues.map((v) => (
@@ -167,6 +196,9 @@ export function EditBookingForm({
             initialNextBookingAt={initialNextBookingAt}
             initialNextBookingDurationHours={initialNextBookingDurationHours}
             defaultOpen
+            duration={pickerDuration}
+            onDurationChange={setPickerDuration}
+            durationEditable={!modeId}
           />
         </div>
       </div>
@@ -180,20 +212,20 @@ export function EditBookingForm({
             name="lessonModeId"
             required
             value={modeId}
-            onChange={(e) => setModeId(e.target.value)}
-            className={`mt-2 w-full rounded-xl border bg-white px-3 py-2 text-sm outline-none focus:border-cyan-600 focus:ring-2 focus:ring-cyan-500/25 ${
+            onChange={(e) => onModeChange(e.target.value)}
+            className={`mt-2 w-full rounded-xl border bg-white px-3 py-2 text-sm outline-none focus:border-sky-600 focus:ring-2 focus:ring-sky-500/25 ${
               !modeId ? "border-red-300" : "border-slate-300"
             }`}
           >
             <option value="">{lang === "zh" ? "请选择" : "Select"}</option>
             {modes.map((m) => (
               <option key={m.id} value={m.id}>
-                {m.code}（S${Math.round(m.default_price_cents / 100)}/{lang === "zh" ? "人" : "ea"}）
+                {formatLessonModeOption(m, lang)}
               </option>
             ))}
           </select>
           {!modeId ? (
-            <div className="mt-1 text-sm text-red-600">{lang === "zh" ? "上课模式必选。" : "Mode is required."}</div>
+            <div className="mt-1 select-text text-sm text-red-700">{lang === "zh" ? "上课模式必选。" : "Mode is required."}</div>
           ) : null}
         </div>
 
@@ -205,7 +237,7 @@ export function EditBookingForm({
             name="remarks"
             rows={3}
             defaultValue={initialRemarks ?? ""}
-            className="mt-2 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none focus:border-cyan-600 focus:ring-2 focus:ring-cyan-500/25"
+            className="mt-2 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none focus:border-sky-600 focus:ring-2 focus:ring-sky-500/25"
             placeholder={lang === "zh" ? "例如：已确认场地/自带球…" : "e.g. confirmed court..."}
           />
         </div>
@@ -218,7 +250,7 @@ export function EditBookingForm({
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder={lang === "zh" ? "搜索学员姓名" : "Search by name"}
-              className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-cyan-600 focus:ring-2 focus:ring-cyan-500/25"
+              className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-sky-600 focus:ring-2 focus:ring-sky-500/25"
               autoComplete="off"
             />
 
@@ -232,7 +264,7 @@ export function EditBookingForm({
                       key={s.id}
                       className={`flex cursor-pointer items-center gap-2 rounded-xl border px-3 py-2.5 text-sm transition-colors ${
                         selectedSet.has(s.id)
-                          ? "border-cyan-600/45 bg-cyan-50/70 text-slate-900 shadow-sm shadow-slate-200/30"
+                          ? "border-sky-600/45 bg-sky-50/70 text-slate-900 shadow-sm shadow-slate-200/30"
                           : "border-slate-200 bg-white/90 text-slate-800 hover:border-slate-300"
                       }`}
                     >
@@ -240,7 +272,7 @@ export function EditBookingForm({
                         type="checkbox"
                         checked={selectedSet.has(s.id)}
                         onChange={() => toggleStudent(s.id)}
-                        className="h-4 w-4 shrink-0 rounded border-slate-400 text-cyan-600 focus:ring-cyan-500/30"
+                        className="h-4 w-4 shrink-0 rounded border-slate-400 text-sky-600 focus:ring-sky-500/30"
                       />
                       <span className="truncate font-medium">{s.name}</span>
                     </label>
@@ -261,7 +293,15 @@ export function EditBookingForm({
                       <div className="truncate text-sm font-semibold text-slate-900">{s.name}</div>
                       <button
                         type="button"
-                        onClick={() => toggleStudent(s.id)}
+                        onClick={() => {
+                          const ok = window.confirm(
+                            lang === "zh"
+                              ? `确认移除学员「${s.name}」？`
+                              : `Remove student “${s.name}”?`,
+                          );
+                          if (!ok) return;
+                          toggleStudent(s.id);
+                        }}
                         className="absolute right-2 top-2 inline-flex h-6 w-6 items-center justify-center rounded-full border border-red-200 bg-red-50 text-sm font-bold leading-none text-red-700 hover:bg-red-100"
                         aria-label={lang === "zh" ? `移除 ${s.name}` : `Remove ${s.name}`}
                         title={lang === "zh" ? "移除" : "Remove"}
@@ -281,28 +321,61 @@ export function EditBookingForm({
             ))}
           </div>
           {modeId && requiredCount != null && mismatch ? (
-            <div className="mt-1 text-sm text-red-600">
+            <div className="mt-1 select-text text-sm text-red-700">
               {lang === "zh" ? `该模式必须选择 ${requiredCount} 个学员。` : `This mode requires exactly ${requiredCount} students.`}
             </div>
           ) : null}
         </div>
       </div>
 
-      <div className="pt-2">
+      <div className="flex flex-wrap items-center gap-3 pt-2">
         <button
           type="submit"
           disabled={Boolean(mismatch)}
-          className={`inline-flex h-10 w-10 items-center justify-center rounded-full border text-base font-bold leading-none shadow-sm ${
+          className={`rounded-xl px-4 py-2 text-sm font-medium shadow-sm ${
             mismatch
-              ? "cursor-not-allowed border-slate-200 bg-slate-50 text-slate-300"
-              : "border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
+              ? "cursor-not-allowed bg-slate-100 text-slate-300"
+              : "bg-gradient-to-r from-sky-600 to-sky-700 text-white shadow-sky-900/15 hover:from-sky-700 hover:to-sky-800"
           }`}
-          aria-label={lang === "zh" ? "保存修改" : "Save changes"}
-          title={lang === "zh" ? "保存修改" : "Save changes"}
         >
-          ✓
+          {lang === "zh" ? "保存" : "Save"}
+        </button>
+        <button
+          type="button"
+          onClick={() => setDeleteConfirmOpen(true)}
+          className="rounded-xl border border-red-200 bg-red-50 px-4 py-2 text-sm font-medium text-red-700 hover:bg-red-100"
+        >
+          {lang === "zh" ? "删除" : "Delete"}
+        </button>
+        <button
+          ref={deleteSubmitRef}
+          type="submit"
+          formAction={deleteAction}
+          data-action="delete"
+          className="sr-only"
+          tabIndex={-1}
+          aria-hidden
+        >
+          {lang === "zh" ? "删除" : "Delete"}
         </button>
       </div>
+      <ConfirmDialog
+        open={deleteConfirmOpen}
+        title={lang === "zh" ? "确认删除约课？" : "Delete this booking?"}
+        description={
+          lang === "zh"
+            ? "删除后无法恢复这条约课记录。"
+            : "This booking will be permanently deleted."
+        }
+        cancelLabel={lang === "zh" ? "取消" : "Cancel"}
+        confirmLabel={lang === "zh" ? "确认" : "Confirm"}
+        confirmClassName="rounded-xl bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700"
+        onCancel={() => setDeleteConfirmOpen(false)}
+        onConfirm={() => {
+          setDeleteConfirmOpen(false);
+          deleteSubmitRef.current?.click();
+        }}
+      />
     </form>
   );
 }

@@ -5,8 +5,12 @@ import { redirect } from "next/navigation";
 import { requireUser } from "@/lib/supabase/guards";
 import { getLang } from "@/lib/i18n-server";
 import { dict } from "@/lib/i18n";
-import { sessionDurationHours } from "@/lib/lesson";
+import { formatHours, sessionDurationHours } from "@/lib/lesson";
+import { formatLessonModeRatio } from "@/lib/lesson-mode";
+import { formatSgdFromCents } from "@/lib/money";
+import { querySessionsByIds } from "@/lib/session-queries";
 import { InfoTip } from "@/components/InfoTip";
+import { ConfirmSubmitButton } from "@/components/ConfirmSubmitButton";
 import { toastUrl } from "@/lib/toast";
 
 type SessionRow = {
@@ -102,17 +106,7 @@ export default async function StudentDetailPage({
   });
   const canDelete = sessionIds.length === 0;
 
-  const { data: sessions } =
-    sessionIds.length > 0
-      ? await supabase
-          .from("sessions")
-          .select(
-            "id,session_date,price_cents,duration_hours,content,improvements, venues(name,address), lesson_modes(code,label,default_price_cents)",
-          )
-          .in("id", sessionIds)
-          .order("session_date", { ascending: false })
-          .order("id", { ascending: false })
-      : { data: [] as any[] };
+  const sessions = await querySessionsByIds(supabase, sessionIds);
 
   const { data: ssAll } =
     sessionIds.length > 0
@@ -137,11 +131,7 @@ export default async function StudentDetailPage({
       date: s.session_date,
       venueName: s.venues?.name ?? (lang === "zh" ? "（未填场地）" : "(No venue)"),
       venueAddress: s.venues?.address ?? null,
-      modeLabel: mode
-        ? `${mode.code} · ${mode.label}`
-        : lang === "zh"
-          ? "（未填模式）"
-          : "(No mode)",
+      modeLabel: formatLessonModeRatio(mode?.code, lang),
       perPersonCents,
       headcount,
       revenueCents,
@@ -164,7 +154,7 @@ export default async function StudentDetailPage({
     byDate.set(k, list);
   }
 
-  const totalHours = rows.reduce((a, r) => a + r.durationHours, 0);
+  const totalHours = Math.round(rows.reduce((a, r) => a + r.durationHours, 0) * 10) / 10;
 
   return (
     <div className="max-w-3xl space-y-6">
@@ -211,9 +201,14 @@ export default async function StudentDetailPage({
           <div className="flex items-center gap-2">
             <form action={deleteStudent}>
               <input type="hidden" name="id" value={student.id} />
-              <button
+              <ConfirmSubmitButton
                 type="submit"
                 disabled={!canDelete}
+                confirmText={
+                  lang === "zh"
+                    ? "确认删除这个学员？\n\n提示：如果已有上课记录，将无法删除。"
+                    : "Delete this student?\n\nNote: Students with class history can’t be deleted."
+                }
                 className={`inline-flex h-6 w-6 items-center justify-center rounded-full border text-[12px] font-bold leading-none ${
                   canDelete
                     ? "border-red-200 bg-red-50 text-red-700 hover:bg-red-100"
@@ -223,9 +218,9 @@ export default async function StudentDetailPage({
                 title={lang === "zh" ? "删除学员" : "Delete student"}
               >
                 ×
-              </button>
+              </ConfirmSubmitButton>
             </form>
-            {!canDelete && (
+            {!canDelete ? (
               <InfoTip
                 side="top"
                 text={
@@ -234,7 +229,7 @@ export default async function StudentDetailPage({
                     : "Students with class history can’t be deleted."
                 }
               />
-            )}
+            ) : null}
           </div>
         </div>
         {/* Avatar removed */}
@@ -247,7 +242,7 @@ export default async function StudentDetailPage({
             <input
               name="name"
               defaultValue={student.name}
-              className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-cyan-600 focus:ring-2 focus:ring-cyan-500/25"
+              className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-sky-600 focus:ring-2 focus:ring-sky-500/25"
             />
           </div>
           <div className="sm:col-span-1">
@@ -258,7 +253,7 @@ export default async function StudentDetailPage({
               name="phone"
               defaultValue={student.phone ?? ""}
               placeholder={lang === "zh" ? "可选" : "Optional"}
-              className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-cyan-600 focus:ring-2 focus:ring-cyan-500/25"
+              className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-sky-600 focus:ring-2 focus:ring-sky-500/25"
             />
           </div>
           <div className="sm:col-span-2">
@@ -270,16 +265,15 @@ export default async function StudentDetailPage({
               defaultValue={student.notes ?? ""}
               rows={3}
               placeholder=""
-              className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-cyan-600 focus:ring-2 focus:ring-cyan-500/25"
+              className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-sky-600 focus:ring-2 focus:ring-sky-500/25"
             />
           </div>
           <div className="sm:col-span-2 flex justify-end">
             <button
-              aria-label={lang === "zh" ? "保存" : "Save"}
-              title={lang === "zh" ? "保存" : "Save"}
-              className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-emerald-200 bg-emerald-50 text-base font-bold leading-none text-emerald-700 shadow-sm hover:bg-emerald-100"
+              type="submit"
+              className="rounded-xl bg-gradient-to-r from-sky-600 to-sky-700 px-4 py-2 text-sm font-medium text-white shadow-md shadow-sky-900/15 hover:from-sky-700 hover:to-sky-800"
             >
-              ✓
+              {lang === "zh" ? "保存" : "Save"}
             </button>
           </div>
         </form>
@@ -306,8 +300,8 @@ export default async function StudentDetailPage({
                   <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-2">
                     <div className="text-sm font-medium text-slate-900">{date}</div>
                     <div className="text-xs text-slate-600/90">
-                      {lang === "zh" ? "当日" : "Day"}: S$
-                      {(dayRev / 100).toFixed(0)} · {dayHrs}h
+                      {lang === "zh" ? "当日" : "Day"}: {formatSgdFromCents(dayRev)} ·{" "}
+                      {formatHours(dayHrs, lang)}
                     </div>
                   </div>
                   <ul className="mt-3 space-y-4">
@@ -347,7 +341,7 @@ export default async function StudentDetailPage({
                               {lang === "zh"
                                 ? `${r.headcount}人到课`
                                 : `${r.headcount} present`}{" "}
-                              · S${Math.round(r.perPersonCents / 100)}/
+                              · {formatSgdFromCents(r.perPersonCents)}/
                               {lang === "zh" ? "人" : "person"}
                             </div>
                             <Link
@@ -358,9 +352,9 @@ export default async function StudentDetailPage({
                             </Link>
                           </div>
                           <div className="text-right text-sm font-medium text-slate-900">
-                            <div>S${(r.revenueCents / 100).toFixed(0)}</div>
+                            <div>{formatSgdFromCents(r.revenueCents)}</div>
                             <div className="text-xs font-normal text-slate-500">
-                              {r.durationHours}h
+                              {formatHours(r.durationHours, lang)}
                             </div>
                           </div>
                         </div>

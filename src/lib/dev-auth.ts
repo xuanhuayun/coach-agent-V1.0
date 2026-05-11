@@ -14,8 +14,8 @@ export function isMiddlewareDevAuthSkip(): boolean {
  * Full server-side bypass: needs service role + a real auth.users UUID for FKs.
  */
 export function isDevAuthBypass(): boolean {
-  if (process.env.VERCEL === "1") return false;
   const enabled =
+    process.env.COACH_AGENT_PROD_SKIP_AUTH === "1" ||
     process.env.NEXT_PUBLIC_COACH_AGENT_DEV_SKIP === "1" ||
     process.env.COACH_AGENT_DEV_SKIP_AUTH === "1";
   if (!enabled) return false;

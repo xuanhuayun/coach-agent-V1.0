@@ -46,55 +46,43 @@ export function ToastBar() {
     setVisible(false);
   }
 
-  async function copyText(text: string) {
-    try {
-      await navigator.clipboard.writeText(text);
-    } catch {
-      // best-effort fallback
-      try {
-        const el = document.createElement("textarea");
-        el.value = text;
-        el.style.position = "fixed";
-        el.style.left = "-9999px";
-        document.body.appendChild(el);
-        el.select();
-        document.execCommand("copy");
-        document.body.removeChild(el);
-      } catch {
-        /* ignore */
-      }
-    }
-  }
-
   if (!visible || !show) return null;
 
-  return (
-    <div className="mx-auto max-w-6xl px-4 sm:px-6">
-      <div className={`mt-3 rounded-2xl border px-4 py-3 text-sm ${className}`}>
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div className="min-w-0 whitespace-pre-wrap break-words">{msg}</div>
-          <div className="flex shrink-0 items-center gap-2">
-            {toast === "error" ? (
-              <button
-                type="button"
-                onClick={() => copyText(msg)}
-                className="rounded-lg border border-slate-300 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50"
-              >
-                复制
-              </button>
-            ) : null}
+  if (toast === "error") {
+    return (
+      <div className="mx-auto max-w-6xl px-4 sm:px-6">
+        <div className={`mt-3 rounded-2xl border px-4 py-3 text-sm ${className}`}>
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div className="min-w-0 cursor-text select-text whitespace-pre-wrap break-words">{msg}</div>
             <button
               type="button"
               onClick={dismiss}
-              className="rounded-lg border border-slate-300 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50"
-              aria-label="Close"
+              className="shrink-0 rounded-lg border border-red-200 bg-white px-2.5 py-1 text-xs font-semibold text-red-800 hover:bg-red-100"
+              aria-label="关闭"
             >
               关闭
             </button>
           </div>
         </div>
       </div>
+    );
+  }
+
+  return (
+    <div className="mx-auto max-w-6xl px-4 sm:px-6">
+      <div className={`mt-3 rounded-2xl border px-4 py-3 text-sm ${className}`}>
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="min-w-0 whitespace-pre-wrap break-words">{msg}</div>
+          <button
+            type="button"
+            onClick={dismiss}
+            className="shrink-0 rounded-lg border border-slate-300 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+            aria-label="关闭"
+          >
+            关闭
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
-

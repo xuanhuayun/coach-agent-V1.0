@@ -3,7 +3,14 @@ import { notFound } from "next/navigation";
 import { requireUser } from "@/lib/supabase/guards";
 import { getLang } from "@/lib/i18n-server";
 import { dict } from "@/lib/i18n";
-import { sessionDurationHours } from "@/lib/lesson";
+import { formatHours, sessionDurationHours } from "@/lib/lesson";
+import { formatLessonModeRatio } from "@/lib/lesson-mode";
+import { formatSgdFromCents } from "@/lib/money";
+import {
+  querySessionById,
+  querySessionStudentLinks,
+  studentFromSessionStudentRow,
+} from "@/lib/session-queries";
 import { singaporeTodayYmd } from "@/lib/singapore-date";
 
 export default async function SessionDetailPage({
@@ -16,41 +23,22 @@ export default async function SessionDetailPage({
   const lang = await getLang();
   const d = dict[lang];
 
-  let session: any = null;
-  const q1 = await supabase
-    .from("sessions")
-    .select(
-      "id,session_date,content,improvements,remarks,next_booking_at,next_booking_duration_hours,price_cents,duration_hours, venues(name,address), lesson_modes(code,label,default_price_cents)",
-    )
-    .eq("id", id)
-    .single();
-  if (!q1.error) {
-    session = q1.data;
-  } else {
-    const q2 = await supabase
-      .from("sessions")
-      .select(
-        "id,session_date,content,improvements,remarks,next_booking_at,price_cents,duration_hours, venues(name,address), lesson_modes(code,label,default_price_cents)",
-      )
-      .eq("id", id)
-      .single();
-    session = q2.data;
-  }
-
+  const session = await querySessionById(supabase, id);
   if (!session) notFound();
 
-  const { data: links } = await supabase
-    .from("session_students")
-    .select("student_id,improvements, students(id,name)")
-    .eq("session_id", id);
+  const links = await querySessionStudentLinks(supabase, id);
 
-  const attendees = (links ?? [])
-    .map((r: any) => ({
-      id: r.students?.id as string | undefined,
-      name: r.students?.name as string | undefined,
-      improvements: (r.improvements as string | null) ?? null,
-    }))
-    .filter((x) => x.id && x.name) as { id: string; name: string; improvements: string | null }[];
+  const attendees = links
+    .map((r) => {
+      const student = studentFromSessionStudentRow(r);
+      if (!student) return null;
+      return {
+        id: student.id,
+        name: student.name,
+        improvements: r.improvements ?? null,
+      };
+    })
+    .filter((x): x is { id: string; name: string; improvements: string | null } => x != null);
 
   const mode = session.lesson_modes as any;
   const venue = session.venues as any;
@@ -59,11 +47,7 @@ export default async function SessionDetailPage({
   const headcount = attendees.length;
   const revenueCents = perPersonCents * headcount;
 
-  const modeText = mode
-    ? `${mode.code} · ${mode.label}`
-    : lang === "zh"
-      ? "（未填模式）"
-      : "(No mode)";
+  const modeText = formatLessonModeRatio(mode?.code, lang);
   const venueText =
     venue?.name ?? (lang === "zh" ? "（未填场地）" : "(No venue)");
 
@@ -130,7 +114,7 @@ export default async function SessionDetailPage({
               {lang === "zh" ? "课时" : "Duration"}
             </dt>
             <dd className="mt-0.5 text-slate-900">
-              {sessionDurationHours(session)}h
+              {formatHours(sessionDurationHours(session), lang)}
             </dd>
           </div>
           <div>
@@ -138,10 +122,9 @@ export default async function SessionDetailPage({
               {lang === "zh" ? "本节课收入（整班）" : "Class revenue"}
             </dt>
             <dd className="mt-0.5 text-slate-900">
-              S${(revenueCents / 100).toFixed(0)}
+              {formatSgdFromCents(revenueCents)}
               <span className="ml-2 text-xs text-slate-500">
-                ({lang === "zh" ? "单价" : "rate"} S$
-                {Math.round(perPersonCents / 100)} × {headcount})
+                ({lang === "zh" ? "单价" : "rate"} {formatSgdFromCents(perPersonCents)} × {headcount})
               </span>
             </dd>
           </div>

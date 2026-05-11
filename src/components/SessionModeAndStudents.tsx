@@ -1,19 +1,18 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import type { Lang } from "@/lib/i18n";
+import { formatLessonModeOption, requiredCountFromModeCode } from "@/lib/lesson-mode";
 import { SessionStudentsAndImprovements } from "@/components/SessionStudentsAndImprovements";
 
-type Mode = { id: string; code: string; label: string; default_price_cents: number };
+type Mode = {
+  id: string;
+  code: string;
+  label: string;
+  default_price_cents: number;
+  default_duration_hours?: number | null;
+};
 type Student = { id: string; name: string };
-
-function requiredCountFromCode(code: string | null | undefined): number | null {
-  if (!code) return null;
-  const m = /^1:(\d)$/.exec(code.trim());
-  if (!m) return null;
-  const n = Number(m[1]);
-  return n >= 1 && n <= 4 ? n : null;
-}
 
 export function SessionModeAndStudents({
   lang,
@@ -21,20 +20,26 @@ export function SessionModeAndStudents({
   students,
   children,
   showStudentNotes = true,
+  lessonModeId,
+  onLessonModeIdChange,
+  selectedStudentIds,
+  onSelectedStudentIdsChange,
+  returnTo = "/sessions",
 }: {
   lang: Lang;
   modes: Mode[];
   students: Student[];
   children: React.ReactNode;
   showStudentNotes?: boolean;
+  lessonModeId: string;
+  onLessonModeIdChange: (id: string) => void;
+  selectedStudentIds: string[];
+  onSelectedStudentIdsChange: (ids: string[]) => void;
+  returnTo?: string;
 }) {
-  const [modeId, setModeId] = useState<string>("");
-  const [selectedCount, setSelectedCount] = useState(0);
-
-  const mode = useMemo(() => modes.find((m) => m.id === modeId) ?? null, [modes, modeId]);
-  const requiredCount = requiredCountFromCode(mode?.code);
-
-  const mismatch = requiredCount != null && selectedCount !== requiredCount;
+  const mode = useMemo(() => modes.find((m) => m.id === lessonModeId) ?? null, [modes, lessonModeId]);
+  const requiredCount = requiredCountFromModeCode(mode?.code);
+  const mismatch = requiredCount != null && selectedStudentIds.length !== requiredCount;
 
   return (
     <div className="space-y-2">
@@ -44,22 +49,21 @@ export function SessionModeAndStudents({
         </label>
         <select
           name="lessonModeId"
-          required
-          value={modeId}
-          onChange={(e) => setModeId(e.target.value)}
-          className={`mt-2 w-full rounded-xl border bg-white px-3 py-2 text-sm outline-none focus:border-cyan-600 focus:ring-2 focus:ring-cyan-500/25 ${
-            !modeId ? "border-red-300" : "border-slate-300"
+          value={lessonModeId}
+          onChange={(e) => onLessonModeIdChange(e.target.value)}
+          className={`mt-2 w-full rounded-xl border bg-white px-3 py-2 text-sm outline-none focus:border-sky-600 focus:ring-2 focus:ring-sky-500/25 ${
+            !lessonModeId ? "border-red-300" : "border-slate-300"
           }`}
         >
           <option value="">{lang === "zh" ? "请选择" : "Select"}</option>
           {modes.map((m) => (
             <option key={m.id} value={m.id}>
-              {m.code}（S${Math.round(m.default_price_cents / 100)}/{lang === "zh" ? "人" : "ea"}）
+              {formatLessonModeOption(m, lang)}
             </option>
           ))}
         </select>
-        {!modeId ? (
-          <div className="mt-1 text-sm text-red-600">
+        {!lessonModeId ? (
+          <div className="mt-1 select-text text-sm text-red-700">
             {lang === "zh" ? "上课模式必选，不然无法计算金额。" : "Mode is required."}
           </div>
         ) : null}
@@ -73,12 +77,14 @@ export function SessionModeAndStudents({
           students={students}
           lang={lang}
           requiredCount={requiredCount ?? undefined}
-          onSelectedCountChange={setSelectedCount}
           betweenSelectedAndImprovements={children}
           showImprovements={showStudentNotes}
+          returnTo={returnTo}
+          selectedIds={selectedStudentIds}
+          onSelectedIdsChange={onSelectedStudentIdsChange}
         />
-        {modeId && requiredCount != null && mismatch ? (
-          <div className="mt-1 text-sm text-red-600">
+        {lessonModeId && requiredCount != null && mismatch ? (
+          <div className="mt-1 select-text text-sm text-red-700">
             {lang === "zh"
               ? `该模式必须选择 ${requiredCount} 个学员。`
               : `This mode requires exactly ${requiredCount} students.`}
@@ -88,4 +94,3 @@ export function SessionModeAndStudents({
     </div>
   );
 }
-

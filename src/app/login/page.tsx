@@ -16,7 +16,7 @@ export default async function LoginPage({
 
   return (
     <Suspense
-      fallback={<div className="min-h-screen bg-slate-50 text-slate-900" />}
+      fallback={<div className="min-h-screen bg-sky-50/70 text-slate-900" />}
     >
       <LoginForm />
     </Suspense>

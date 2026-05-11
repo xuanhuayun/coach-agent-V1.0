@@ -31,7 +31,7 @@ export default async function AppLayout({
   return (
     <div className="min-h-dvh text-slate-900">
       <div className="mx-auto min-h-dvh max-w-6xl">
-        <header className="sticky top-0 z-40 border-b border-slate-200/90 bg-white/80 px-4 py-3 shadow-sm shadow-slate-200/30 backdrop-blur-md sm:px-6">
+        <header className="sticky top-0 z-40 border-b border-sky-100/90 bg-sky-50/90 px-4 py-3 shadow-sm shadow-sky-100/50 backdrop-blur-md sm:px-6">
           <div className="space-y-2">
             <div className="flex items-start justify-between gap-4">
               <div className="min-w-0">

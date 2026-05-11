@@ -5,6 +5,22 @@ export function singaporeTodayYmd(now = new Date()): string {
   return now.toLocaleDateString("en-CA", { timeZone: "Asia/Singapore" });
 }
 
+/** Booking list heading: calendar date + weekday in Asia/Singapore. */
+export function formatBookingScheduleHeading(iso: string, lang: "zh" | "en"): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  const ymd = d.toLocaleDateString("en-CA", { timeZone: "Asia/Singapore" });
+  const weekday = d.toLocaleDateString(lang === "zh" ? "zh-CN" : "en-SG", {
+    timeZone: "Asia/Singapore",
+    weekday: lang === "zh" ? "long" : "short",
+  });
+  if (lang === "zh") {
+    const [y, m, day] = ymd.split("-");
+    return `${y}年${Number(m)}月${Number(day)}日 · ${weekday}`;
+  }
+  return `${ymd} (${weekday})`;
+}
+
 /** UTC ISO bounds for the current Singapore calendar day: [start, end). */
 export function singaporeTodayBoundsUtcIso(now = new Date()): { startIso: string; endIso: string } {
   const ymd = singaporeTodayYmd(now); // YYYY-MM-DD in Asia/Singapore

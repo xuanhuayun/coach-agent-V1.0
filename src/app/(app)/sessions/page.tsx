@@ -1,46 +1,64 @@
 import Link from "next/link";
-import { format, parseISO } from "date-fns";
+import { addDays, addMonths, format, parseISO } from "date-fns";
+import { enUS } from "date-fns/locale";
 import { requireUser } from "@/lib/supabase/guards";
 import { getLang } from "@/lib/i18n-server";
-import { dict } from "@/lib/i18n";
+import { dict, type Lang } from "@/lib/i18n";
 import { sessionDurationHours } from "@/lib/lesson";
-import { singaporeTodayBoundsUtcIso } from "@/lib/singapore-date";
+import { querySessionHistory } from "@/lib/session-queries";
+import { singaporeTodayBoundsUtcIso, singaporeTodayYmd } from "@/lib/singapore-date";
+import { SessionHistoryByMonth, type SessionHistoryMonth } from "./SessionHistoryByMonth";
+import { sortLessonModes } from "@/lib/lesson-mode";
+import { ensureLessonModes, listLessonModes } from "@/lib/lesson-modes-server";
+import { RecentPaymentsClient } from "@/components/RecentPaymentsClient";
+import {
+  fetchOverdueUnpaidPaymentRows,
+  fetchRecentSessionPaymentRows,
+} from "@/lib/recent-session-payments";
 import { SessionLogPanel } from "./SessionLogPanel";
 
-function parseYmd(s: string | undefined): Date | null {
-  if (!s || !/^\d{4}-\d{2}-\d{2}$/.test(s.trim())) return null;
-  const d = parseISO(s.trim());
-  return Number.isNaN(d.getTime()) ? null : d;
+function monthKeyFromYmd(ymd: string) {
+  return String(ymd).slice(0, 7);
+}
+
+function monthLabel(key: string, lang: Lang) {
+  const [y, m] = key.split("-").map((part) => Number(part));
+  if (lang === "zh") return `${y}年${m}月`;
+  return format(parseISO(`${key}-01`), "MMMM yyyy", { locale: enUS });
+}
+
+function enumerateMonthKeys(startKey: string, endKey: string) {
+  const keys: string[] = [];
+  let cur = parseISO(`${startKey}-01`);
+  const end = parseISO(`${endKey}-01`);
+  while (cur <= end) {
+    keys.push(format(cur, "yyyy-MM"));
+    cur = addMonths(cur, 1);
+  }
+  return keys;
 }
 
 export default async function SessionsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ from?: string; to?: string }>;
+  searchParams: Promise<{ month?: string }>;
 }) {
   const sp = await searchParams;
-  const { supabase } = await requireUser();
+  const { supabase, user } = await requireUser();
+  await ensureLessonModes(supabase, user.id);
   const lang = await getLang();
   const d = dict[lang];
+  const todayYmd = singaporeTodayYmd();
+  const todayMonth = todayYmd.slice(0, 7);
+  const initialMonthKey =
+    sp.month && /^\d{4}-\d{2}$/.test(sp.month.trim()) ? sp.month.trim() : todayMonth;
 
-  const fromRaw = sp.from?.trim() ?? "";
-  const toRaw = sp.to?.trim() ?? "";
-  const fromD = fromRaw ? parseYmd(fromRaw) : null;
-  const toD = toRaw ? parseYmd(toRaw) : null;
-  let fromStr = fromD ? format(fromD, "yyyy-MM-dd") : "";
-  let toStr = toD ? format(toD, "yyyy-MM-dd") : "";
-  if (fromD && toD && fromD > toD) {
-    [fromStr, toStr] = [toStr, fromStr];
-  }
-
-  const [{ data: venues }, { data: modes }, { data: students }] = await Promise.all([
+  const [{ data: venues }, modesRaw, { data: students }] = await Promise.all([
     supabase.from("venues").select("id,name").order("created_at", { ascending: false }),
-    supabase
-      .from("lesson_modes")
-      .select("id,code,label,default_price_cents")
-      .order("code", { ascending: true }),
+    listLessonModes(supabase),
     supabase.from("students").select("id,name").order("created_at", { ascending: false }),
   ]);
+  const modes = sortLessonModes(modesRaw);
 
   const { startIso, endIso } = singaporeTodayBoundsUtcIso();
   let pendingBooked: any[] = [];
@@ -72,6 +90,15 @@ export default async function SessionsPage({
           .select("session_id, students(id,name)")
           .in("session_id", pendingIds)
       : { data: [] as any[] };
+  const from3 = format(addDays(parseISO(todayYmd), -2), "yyyy-MM-dd");
+  const [overduePaymentRows, recentPaymentRows] = await Promise.all([
+    fetchOverdueUnpaidPaymentRows(supabase, lang, user.id, { beforeYmd: from3 }),
+    fetchRecentSessionPaymentRows(supabase, lang, user.id, {
+      fromYmd: from3,
+      toYmd: todayYmd,
+    }),
+  ]);
+
   const pendingBySession = new Map<string, { id: string; name: string }[]>();
   (pendingLinks ?? []).forEach((r: any) => {
     const sid = r.session_id as string | undefined;
@@ -82,39 +109,71 @@ export default async function SessionsPage({
     pendingBySession.set(sid, list);
   });
 
-  let sessionsQuery = supabase
-    .from("sessions")
-    .select(
-      "id,session_date,content,price_cents,duration_hours, venues(name,address), lesson_modes(code,label,default_price_cents)",
-    )
-    .order("session_date", { ascending: false })
-    .order("created_at", { ascending: false });
-
-  if (fromStr) sessionsQuery = sessionsQuery.gte("session_date", fromStr);
-  if (toStr) sessionsQuery = sessionsQuery.lte("session_date", toStr);
-
-  const { data: sessions } = await sessionsQuery;
+  const sessions = await querySessionHistory(supabase, {
+    toStr: todayYmd,
+    loggedOnly: true,
+  });
 
   const sessionIds = (sessions ?? []).map((s: { id: string }) => s.id);
   const { data: ss } =
     sessionIds.length > 0
       ? await supabase
           .from("session_students")
-          .select("session_id")
+          .select("session_id, students(name)")
           .in("session_id", sessionIds)
-      : { data: [] as { session_id: string }[] };
+      : { data: [] as { session_id: string; students: { name: string } | null }[] };
 
-  const headcount = new Map<string, number>();
+  const studentsBySession = new Map<string, { name: string }[]>();
   (ss ?? []).forEach((r) => {
-    headcount.set(r.session_id, (headcount.get(r.session_id) ?? 0) + 1);
+    const st = r.students;
+    const name = (Array.isArray(st) ? st[0]?.name : st?.name)?.trim();
+    if (!name) return;
+    const list = studentsBySession.get(r.session_id) ?? [];
+    list.push({ name });
+    studentsBySession.set(r.session_id, list);
   });
 
-  const filterSummary =
-    fromStr || toStr
-      ? `${fromStr || "…"} — ${toStr || "…"}`
-      : lang === "zh"
-        ? "全部"
-        : "All";
+  const oldestMonth =
+    (sessions ?? []).length > 0
+      ? (sessions ?? []).reduce((min, s) => {
+          const key = monthKeyFromYmd(s.session_date);
+          return key < min ? key : min;
+        }, todayMonth)
+      : todayMonth;
+  const monthKeys = enumerateMonthKeys(oldestMonth, todayMonth);
+  const sessionsByMonth = new Map<string, SessionHistoryMonth["sessions"]>();
+  for (const key of monthKeys) {
+    sessionsByMonth.set(key, []);
+  }
+  for (const s of sessions ?? []) {
+    const key = monthKeyFromYmd(s.session_date);
+    const list = sessionsByMonth.get(key);
+    if (!list) continue;
+    const mode = s.lesson_modes;
+    const modeCode = mode?.code ?? (lang === "zh" ? "—" : "—");
+    const linkedStudents = studentsBySession.get(s.id) ?? [];
+    const perPersonCents = s.price_cents ?? mode?.default_price_cents ?? 0;
+    list.push({
+      id: s.id,
+      sessionDate: s.session_date,
+      modeCode,
+      durationHours: sessionDurationHours(s),
+      studentNames: linkedStudents.map((student) => student.name),
+      classRevenueCents: perPersonCents * linkedStudents.length,
+    });
+  }
+  const historyMonths: SessionHistoryMonth[] = monthKeys.map((key) => {
+    const list = sessionsByMonth.get(key) ?? [];
+    list.sort((a, b) => {
+      const byDate = b.sessionDate.localeCompare(a.sessionDate);
+      return byDate !== 0 ? byDate : b.id.localeCompare(a.id);
+    });
+    return {
+      key,
+      label: monthLabel(key, lang),
+      sessions: list,
+    };
+  });
 
   return (
     <div className="max-w-3xl space-y-8">
@@ -124,8 +183,8 @@ export default async function SessionsPage({
         </h1>
         <p className="mt-2 text-sm text-slate-600/90">
           {lang === "zh"
-            ? "随手记一节课：今天教了什么、谁来上、哪里上。越常记录，复盘越轻松。"
-            : "Log a class here, then browse history below with optional date filters."}
+            ? "随手记一节课：今天教了什么、谁来上课了。记录完可以在「财务」模块查看收入。"
+            : "Log a class: what you taught and who attended. After saving, check revenue in Finance."}
         </p>
       </div>
 
@@ -193,7 +252,7 @@ export default async function SessionsPage({
                         </div>
                       ) : null}
                     </div>
-                    <span className="shrink-0 text-xs font-medium text-cyan-700">
+                    <span className="shrink-0 text-xs font-medium text-sky-700">
                       {lang === "zh" ? "去记录 →" : "Log →"}
                     </span>
                   </div>
@@ -204,6 +263,22 @@ export default async function SessionsPage({
         </section>
       ) : null}
 
+      {overduePaymentRows.length > 0 ? (
+        <RecentPaymentsClient
+          lang={lang}
+          variant="warning"
+          showPaidSection={false}
+          title={lang === "zh" ? "超过三天未收费" : "Overdue unpaid"}
+          rows={overduePaymentRows}
+        />
+      ) : null}
+
+      <RecentPaymentsClient
+        lang={lang}
+        title={lang === "zh" ? "过去三天 · 收款清单" : "Last 3 days · Payments"}
+        rows={recentPaymentRows}
+      />
+
       <SessionLogPanel
         lang={lang}
         venues={venues ?? []}
@@ -211,131 +286,29 @@ export default async function SessionsPage({
         students={(students ?? []).map((s: any) => ({ id: s.id, name: s.name }))}
       />
 
-      <section className="space-y-4">
-        <div className="flex flex-wrap items-end justify-between gap-3">
-          <div>
-            <h2 className="text-sm font-semibold text-slate-900">
-              {d.sessions_history_title}
-            </h2>
-          </div>
-          <p className="text-xs text-slate-500">
-            {d.sessions_filter_active}:{" "}
-            <span className="font-medium text-slate-700">{filterSummary}</span>
-          </p>
+      <section className="space-y-3">
+        <div>
+          <h2 className="text-sm font-semibold text-slate-900">{d.sessions_history_title}</h2>
+          <p className="mt-1 text-xs text-slate-500">{d.sessions_filter_hint}</p>
         </div>
 
-        <form
-          action="/sessions"
-          method="get"
-          className="flex flex-wrap items-end gap-3 rounded-2xl border border-slate-200 bg-white p-4"
-        >
-          <div>
-            <label className="block text-xs font-medium text-slate-600">
-              {d.sessions_filter_from}
-            </label>
-            <input
-              type="date"
-              name="from"
-              defaultValue={fromStr || ""}
-              className="mt-1 rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none focus:border-cyan-600 focus:ring-2 focus:ring-cyan-500/25"
-            />
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-slate-600">
-              {d.sessions_filter_to}
-            </label>
-            <input
-              type="date"
-              name="to"
-              defaultValue={toStr || ""}
-              className="mt-1 rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none focus:border-cyan-600 focus:ring-2 focus:ring-cyan-500/25"
-            />
-          </div>
-          <button
-            type="submit"
-            className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 bg-white text-base font-bold leading-none text-slate-700 shadow-sm hover:bg-slate-50"
-            aria-label={d.sessions_filter_apply}
-            title={d.sessions_filter_apply}
-          >
-            🔍
-            <span className="sr-only">{d.sessions_filter_apply}</span>
-          </button>
-          {(fromStr || toStr) && (
-            <Link
-              href="/sessions"
-              className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 bg-white text-base font-bold leading-none text-slate-700 shadow-sm hover:bg-slate-50"
-              aria-label={d.sessions_filter_clear}
-              title={d.sessions_filter_clear}
-            >
-              ×
-              <span className="sr-only">{d.sessions_filter_clear}</span>
-            </Link>
-          )}
-        </form>
-
-        <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
-          {(sessions ?? []).length === 0 ? (
-            <div className="p-8 text-center text-sm text-slate-600/90">
-              {lang === "zh"
-                ? "这个区间里还没找到记录～换个时间试试，或先去上面记一节！"
-                : "No classes match this filter."}
-            </div>
-          ) : (
-            <ul className="divide-y divide-slate-100">
-              {(sessions ?? []).map((s: any) => {
-                const mode = s.lesson_modes;
-                const venue = s.venues;
-                const hc = headcount.get(s.id) ?? 0;
-                const modeText = mode
-                  ? `${mode.code} · ${mode.label}`
-                  : lang === "zh"
-                    ? "（未填模式）"
-                    : "(No mode)";
-                const venueText =
-                  venue?.name ?? (lang === "zh" ? "（未填场地）" : "(No venue)");
-                const snippet = s.content
-                  ? String(s.content).slice(0, 80) +
-                    (String(s.content).length > 80 ? "…" : "")
-                  : null;
-
-                return (
-                  <li key={s.id}>
-                    <Link
-                      href={`/sessions/${s.id}`}
-                      className="block p-4 transition-colors hover:bg-slate-50"
-                    >
-                      <div className="flex flex-wrap items-start justify-between gap-2">
-                        <div className="min-w-0">
-                          <div className="text-sm font-semibold text-slate-900">
-                            {s.session_date}
-                          </div>
-                          <div className="mt-1 text-sm text-slate-800/90">{modeText}</div>
-                          <div className="mt-0.5 text-xs text-slate-500">
-                            {lang === "zh" ? "场地" : "Venue"}: {venueText}
-                            {venue?.address ? ` · ${venue.address}` : ""}
-                          </div>
-                          <div className="mt-1 text-xs text-slate-500">
-                            {lang === "zh" ? "到课" : "Present"}: {hc}{" "}
-                            {lang === "zh" ? "人" : "students"} ·{" "}
-                            {sessionDurationHours(s)}h
-                          </div>
-                          {snippet && (
-                            <p className="mt-2 line-clamp-2 text-xs text-slate-700/80">
-                              {snippet}
-                            </p>
-                          )}
-                        </div>
-                        <span className="shrink-0 text-xs font-medium text-cyan-700">
-                          {lang === "zh" ? "详情 →" : "View →"}
-                        </span>
-                      </div>
-                    </Link>
-                  </li>
-                );
-              })}
-            </ul>
-          )}
-        </div>
+        <SessionHistoryByMonth
+          lang={lang}
+          months={historyMonths}
+          initialMonthKey={initialMonthKey}
+          rangeLabel={d.sessions_filter_active}
+          emptyMonthText={
+            lang === "zh"
+              ? "这个月还没有记录～左右滑动看看其他月份，或先去上面记一节！"
+              : "No classes logged this month."
+          }
+          emptyAllText={
+            lang === "zh"
+              ? "还没有历史记录～先去上面记一节吧！"
+              : "No class history yet."
+          }
+          detailLabel={lang === "zh" ? "详情 →" : "View →"}
+        />
       </section>
     </div>
   );

@@ -85,7 +85,7 @@ export function StudentsListClient({
         </div>
         <Link
           href="/students/new"
-          className="inline-flex items-center justify-center text-sm font-semibold text-cyan-700 hover:text-cyan-800"
+          className="inline-flex items-center justify-center text-sm font-semibold text-sky-700 hover:text-sky-800"
           aria-label={t.newStudent}
           title={t.newStudent}
         >
@@ -99,7 +99,7 @@ export function StudentsListClient({
           value={q}
           onChange={(e) => setQ(e.target.value)}
           placeholder={t.search}
-          className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-cyan-600 focus:ring-2 focus:ring-cyan-500/25 sm:max-w-xs"
+          className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-sky-600 focus:ring-2 focus:ring-sky-500/25 sm:max-w-xs"
           autoComplete="off"
         />
       </div>
@@ -222,7 +222,7 @@ export function StudentsListClient({
                       title={s.future20 ? "next20 ✓" : "next20 ✗"}
                     />
                   </div>
-                  <span className="text-xs text-cyan-700">{lang === "zh" ? "详情 →" : "→"}</span>
+                  <span className="text-xs text-sky-700">{lang === "zh" ? "详情 →" : "→"}</span>
                 </div>
               </Link>
             ))}

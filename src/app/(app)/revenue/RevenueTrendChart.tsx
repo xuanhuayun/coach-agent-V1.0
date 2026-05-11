@@ -44,7 +44,7 @@ export function RevenueTrendChart({
             yAxisId="hrs"
             orientation="right"
             tick={{ fontSize: 11, fill: "#64748b" }}
-            tickFormatter={(v) => `${v}h`}
+            tickFormatter={(v) => (lang === "zh" ? `${v}小时` : `${v}h`)}
           />
           <Tooltip
             formatter={(value, name) => {
@@ -60,15 +60,15 @@ export function RevenueTrendChart({
             type="monotone"
             dataKey="revenue"
             name={lang === "zh" ? "收入 (S$)" : "Revenue (S$)"}
-            stroke="#0e7490"
+            stroke="#2563eb"
             strokeWidth={2}
-            dot={{ fill: "#22d3ee", r: 4, strokeWidth: 0 }}
+            dot={{ fill: "#7dd3fc", r: 4, strokeWidth: 0 }}
           />
           <Line
             yAxisId="hrs"
             type="monotone"
             dataKey="hours"
-            name={lang === "zh" ? "上课小时 (h)" : "Hours (h)"}
+            name={lang === "zh" ? "上课小时" : "Hours (h)"}
             stroke="#475569"
             strokeWidth={2}
             dot={{ fill: "#94a3b8", r: 4, strokeWidth: 0 }}

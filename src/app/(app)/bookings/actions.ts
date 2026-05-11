@@ -1,5 +1,6 @@
 "use server";
 
+import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requireUser } from "@/lib/supabase/guards";
 import { toastUrl } from "@/lib/toast";
@@ -124,6 +125,46 @@ export async function updateBooking(formData: FormData) {
   }
 
   redirect(toastUrl(`/bookings/${sessionId}`, "success", "已保存修改。"));
+}
+
+export async function deleteBooking(formData: FormData) {
+  const { supabase, user } = await requireUser();
+
+  const sessionId = String(formData.get("sessionId") ?? "").trim();
+  if (!sessionId) {
+    redirect(toastUrl("/bookings", "error", "参数不完整。"));
+  }
+
+  const { data: session } = await supabase
+    .from("sessions")
+    .select("id,user_id")
+    .eq("id", sessionId)
+    .single();
+
+  if (!session || session.user_id !== user.id) {
+    redirect(toastUrl("/bookings", "error", "找不到这条约课记录。"));
+  }
+
+  const { error } = await supabase.from("sessions").delete().eq("id", sessionId);
+  if (error) {
+    const msg = String((error as { message?: string }).message ?? "");
+    const code = String((error as { code?: string }).code ?? "");
+    if (msg.includes("session_locked")) {
+      redirect(toastUrl(`/bookings/${sessionId}`, "error", "这条约课已超过 14 天，不能删除。"));
+    }
+    redirect(
+      toastUrl(
+        `/bookings/${sessionId}`,
+        "error",
+        `删除失败：${code ? `[${code}] ` : ""}${msg || "请稍后再试。"}`,
+      ),
+    );
+  }
+
+  revalidatePath("/bookings");
+  revalidatePath("/sessions");
+  revalidatePath("/revenue");
+  redirect(toastUrl("/bookings", "success", "已删除约课。"));
 }
 
 export async function createBooking(formData: FormData) {
@@ -256,7 +297,7 @@ export async function createBooking(formData: FormData) {
           ),
         );
       }
-      redirect(toastUrl("/bookings", "success", "已保存今日约课。"));
+      redirect(toastUrl("/bookings", "success", "保存成功，可继续为其他时间约课。"));
     }
   }
 
@@ -302,7 +343,7 @@ export async function createBooking(formData: FormData) {
     );
   }
 
-  redirect(toastUrl("/bookings", "success", "已保存今日约课。"));
+  redirect(toastUrl("/bookings", "success", "保存成功，可继续为其他时间约课。"));
 }
 
 export async function toggleBookingPaid(formData: FormData) {

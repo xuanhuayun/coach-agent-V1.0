@@ -28,13 +28,14 @@ create table if not exists public.students (
   unique (user_id, name)
 );
 
--- Lesson modes (1:1 / 1:2 / 1:3 / 1:4) with per-session price
+-- Lesson modes (ratio + duration variants) with per-person session price
 create table if not exists public.lesson_modes (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references auth.users(id) on delete cascade,
-  code text not null, -- e.g. "1:1"
-  label text not null, -- e.g. "一对一"
+  code text not null, -- e.g. "1:1-1h"
+  label text not null, -- e.g. "1:1，1 小时"
   default_price_cents int not null check (default_price_cents >= 0),
+  default_duration_hours numeric not null default 2 check (default_duration_hours > 0),
   created_at timestamptz not null default now(),
   unique (user_id, code)
 );
@@ -195,3 +196,11 @@ end $$;
 
 -- Seed defaults for a new user can be done from the app.
 
+-- Backfill for databases created before lesson mode duration was added.
+alter table public.lesson_modes
+  add column if not exists default_duration_hours numeric not null default 2
+  check (default_duration_hours > 0);
+
+-- Backfill for databases created before per-student paid status was added.
+alter table public.session_students
+  add column if not exists paid boolean not null default false;

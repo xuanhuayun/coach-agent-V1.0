@@ -4,8 +4,10 @@ import { requireUser } from "@/lib/supabase/guards";
 import { getLang } from "@/lib/i18n-server";
 import { dict } from "@/lib/i18n";
 import { singaporeDayBoundsUtcIso, singaporeTodayYmd } from "@/lib/singapore-date";
+import { sortLessonModes } from "@/lib/lesson-mode";
+import { ensureLessonModes, listLessonModes } from "@/lib/lesson-modes-server";
+import { BookingSessionListItem } from "@/components/BookingSessionListItem";
 import { BookingPanel } from "./BookingPanel";
-import { RecentPaymentsClient } from "./RecentPaymentsClient";
 import { createBooking } from "./actions";
 
 type BookingSession = {
@@ -24,7 +26,8 @@ export default async function BookingsTodayPage({
   searchParams: Promise<{ day?: string }>;
 }) {
   const sp = await searchParams;
-  const { supabase } = await requireUser();
+  const { supabase, user } = await requireUser();
+  await ensureLessonModes(supabase, user.id);
   const lang = await getLang();
   const d = dict[lang] as any;
 
@@ -32,14 +35,12 @@ export default async function BookingsTodayPage({
   const selectedYmd =
     typeof sp.day === "string" && /^\d{4}-\d{2}-\d{2}$/.test(sp.day.trim()) ? sp.day.trim() : todayYmd;
 
-  const [{ data: venues }, { data: modes }, { data: students }] = await Promise.all([
+  const [{ data: venues }, modesRaw, { data: students }] = await Promise.all([
     supabase.from("venues").select("id,name").order("created_at", { ascending: false }),
-    supabase
-      .from("lesson_modes")
-      .select("id,code,label,default_price_cents")
-      .order("code", { ascending: true }),
+    listLessonModes(supabase),
     supabase.from("students").select("id,name").order("created_at", { ascending: false }),
   ]);
+  const modes = sortLessonModes(modesRaw);
 
   const { startIso, endIso } = singaporeDayBoundsUtcIso(selectedYmd);
 
@@ -142,46 +143,6 @@ export default async function BookingsTodayPage({
   });
   const recentStudents = Array.from(recentByStudent.values());
 
-  const recentPaymentRows = (recentLinksSafe ?? [])
-    .map((r: any) => {
-      const s = Array.isArray(r.sessions) ? r.sessions[0] : r.sessions;
-      const sid = s?.id as string | undefined;
-      const studentId = r.students?.id as string | undefined;
-      const studentName = r.students?.name as string | undefined;
-      const sessionDate = s?.session_date as string | undefined;
-      if (!sid || !studentId || !studentName || !sessionDate) return null;
-      const at = s?.next_booking_at ? new Date(String(s.next_booking_at)) : null;
-      const hours =
-        typeof s?.next_booking_duration_hours === "number"
-          ? s.next_booking_duration_hours
-          : Number(s?.next_booking_duration_hours ?? 2);
-      const end = at ? new Date(at.getTime() + (Number.isFinite(hours) ? hours : 2) * 3600_000) : null;
-      const loc = lang === "zh" ? "zh-CN" : "en-SG";
-      const timeText =
-        at && end
-          ? `${sessionDate} ${at.toLocaleTimeString(loc, { hour: "2-digit", minute: "2-digit", hour12: false })}—${end.toLocaleTimeString(
-              loc,
-              { hour: "2-digit", minute: "2-digit", hour12: false },
-            )}`
-          : sessionDate;
-
-      const perPersonCents =
-        (s?.price_cents as number | null | undefined) ??
-        (s?.lesson_modes?.default_price_cents as number | null | undefined) ??
-        0;
-      const feeText = `S$${Math.round(perPersonCents / 100)}`;
-      return {
-        key: `${sid}:${studentId}`,
-        sessionId: sid,
-        studentId,
-        studentName,
-        timeText,
-        feeText,
-        paid: Boolean((r as any).paid ?? false),
-      };
-    })
-    .filter(Boolean) as any[];
-
   // Future bookings list (from tomorrow, Singapore calendar).
   const tomorrowYmd = format(addDays(parseISO(todayYmd), 1), "yyyy-MM-dd");
   const tomorrowStartIso = singaporeDayBoundsUtcIso(tomorrowYmd).startIso;
@@ -222,111 +183,31 @@ export default async function BookingsTodayPage({
 
   return (
     <div className="max-w-3xl space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-lg font-semibold tracking-tight text-slate-900">
-          {d.nav_bookings}
-        </h1>
-        <Link
-          href="/sessions"
-          className="text-sm font-medium text-slate-600 hover:text-slate-800"
-        >
-          {lang === "zh" ? "去记一节课" : "Log class"}
-        </Link>
-      </div>
+      <h1 className="text-lg font-semibold tracking-tight text-slate-900">{d.nav_bookings}</h1>
 
-      <RecentPaymentsClient
-        title={lang === "zh" ? "过去三天 · 收款清单" : "Last 3 days · Payments"}
-        rows={recentPaymentRows}
-      />
-
-      {bookingSessions.length === 0 ? (
+      <section className="space-y-3">
+        <h2 className="text-sm font-semibold text-slate-900">{d.bookings_today}</h2>
+        {bookingSessions.length === 0 ? (
         <div className="rounded-2xl border border-slate-200 bg-white p-6 text-sm text-slate-600/90">
           {selectedYmd === todayYmd ? d.bookings_empty : lang === "zh" ? "这一天没有约课。" : "No bookings that day."}
         </div>
       ) : (
         <div className="space-y-3">
-          {bookingSessions.map((s) => {
-            const start = new Date(s.next_booking_at);
-            const end = new Date(
-              start.getTime() + (Number(s.next_booking_duration_hours ?? 2) || 2) * 3600_000,
-            );
-            const who = (bySession.get(s.id) ?? []).filter((x) => x.id && x.name);
-            const modeText = s.lesson_modes
-              ? `${s.lesson_modes.code} · ${s.lesson_modes.label}`
-              : lang === "zh"
-                ? "（未填模式）"
-                : "(No mode)";
-            const venueText =
-              s.venues?.name ??
-              (lang === "zh" ? "（未填场地）" : "(No venue)");
-
-            return (
-              <div
-                key={s.id}
-                className="rounded-2xl border border-slate-200 bg-white p-4"
-              >
-                <div className="flex flex-wrap items-baseline justify-between gap-2">
-                  <Link
-                    href={`/bookings/${s.id}`}
-                    className="text-sm font-semibold text-slate-900 hover:underline"
-                  >
-                    {start.toLocaleTimeString(lang === "zh" ? "zh-CN" : "en-SG", {
-                      hour: "2-digit",
-                      minute: "2-digit",
-                      hour12: false,
-                    })}
-                    {" — "}
-                    {end.toLocaleTimeString(lang === "zh" ? "zh-CN" : "en-SG", {
-                      hour: "2-digit",
-                      minute: "2-digit",
-                      hour12: false,
-                    })}
-                    <span
-                      className="ml-2 inline-flex h-5 w-5 items-center justify-center rounded-full border border-slate-200 bg-slate-50 text-xs font-semibold text-slate-600"
-                      aria-label={lang === "zh" ? "编辑" : "Edit"}
-                      title={lang === "zh" ? "编辑" : "Edit"}
-                    >
-                      ✎
-                    </span>
-                  </Link>
-                  <div className="text-sm text-slate-700">
-                    {venueText} · {modeText}
-                  </div>
-                </div>
-
-                {who.length > 0 ? (
-                  <div className="mt-3">
-                    <div className="flex flex-wrap gap-2">
-                      {who.map((p) => (
-                        <Link
-                          key={p.id}
-                          href={`/students/${p.id}`}
-                          className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-sm font-medium text-slate-800 hover:bg-slate-100"
-                        >
-                          {p.name}
-                        </Link>
-                      ))}
-                    </div>
-                    {s.remarks ? (
-                      <div className="mt-2 text-sm text-slate-700">
-                        <span className="text-xs font-semibold text-slate-500">
-                          {lang === "zh" ? "备注" : "Notes"}：
-                        </span>{" "}
-                        {s.remarks}
-                      </div>
-                    ) : null}
-                  </div>
-                ) : (
-                  <div className="mt-2 text-sm text-slate-600/90">
-                    {lang === "zh" ? "未关联学员。" : "No students linked."}
-                  </div>
-                )}
-
-              </div>
-            );
-          })}
+          {bookingSessions.map((s) => (
+            <BookingSessionListItem
+              key={s.id}
+              id={s.id}
+              nextBookingAt={s.next_booking_at}
+              venueName={s.venues?.name}
+              modeCode={s.lesson_modes?.code}
+              students={bySession.get(s.id) ?? []}
+              remarks={s.remarks}
+              lang={lang}
+            />
+          ))}
         </div>
-      )}
+        )}
+      </section>
 
       <BookingPanel
         lang={lang}
@@ -338,77 +219,31 @@ export default async function BookingsTodayPage({
       />
 
       <section className="space-y-3 rounded-2xl border border-slate-200 bg-white p-4">
-        <div className="flex flex-wrap items-baseline justify-between gap-2">
-          <div className="text-sm font-semibold text-slate-900">
-            {lang === "zh" ? "未来已约课程" : "Future bookings"}
-          </div>
-        </div>
+        <h2 className="text-sm font-semibold text-slate-900">
+          {lang === "zh" ? "未来已约课程" : "Future bookings"}
+        </h2>
         {futureSessions.length === 0 ? (
           <div className="text-sm text-slate-600/90">
             {lang === "zh" ? "未来还没有约课。" : "No future bookings."}
           </div>
         ) : (
-          <div className="space-y-2">
-            {futureSessions.map((s: any) => {
-              const start = new Date(s.next_booking_at);
-              const end = new Date(start.getTime() + (Number(s.next_booking_duration_hours ?? 2) || 2) * 3600_000);
-              const venueText = s.venues?.name ?? (lang === "zh" ? "（未填场地）" : "(No venue)");
-              const who = (futureBySession.get(s.id) ?? []).filter((x) => x.id && x.name);
-              return (
-                <div key={s.id} className="rounded-2xl border border-slate-200 bg-white p-4">
-                  <div className="flex flex-wrap items-baseline justify-between gap-2">
-                    <Link
-                      href={`/bookings/${s.id}`}
-                      className="text-sm font-semibold text-slate-900 hover:underline"
-                    >
-                      {format(start, "yyyy-MM-dd")}{" "}
-                      {start.toLocaleTimeString(lang === "zh" ? "zh-CN" : "en-SG", {
-                        hour: "2-digit",
-                        minute: "2-digit",
-                        hour12: false,
-                      })}
-                      {" — "}
-                      {end.toLocaleTimeString(lang === "zh" ? "zh-CN" : "en-SG", {
-                        hour: "2-digit",
-                        minute: "2-digit",
-                        hour12: false,
-                      })}
-                      <span
-                        className="ml-2 inline-flex h-5 w-5 items-center justify-center rounded-full border border-slate-200 bg-slate-50 text-xs font-semibold text-slate-600"
-                        aria-label={lang === "zh" ? "编辑" : "Edit"}
-                        title={lang === "zh" ? "编辑" : "Edit"}
-                      >
-                        ✎
-                      </span>
-                    </Link>
-                    <div className="text-sm text-slate-700">{venueText}</div>
-                  </div>
-                  {who.length > 0 ? (
-                    <div className="mt-3 flex flex-wrap gap-2">
-                      {who.map((p) => (
-                        <span
-                          key={p.id}
-                          className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-sm font-medium text-slate-800"
-                        >
-                          {p.name}
-                        </span>
-                      ))}
-                    </div>
-                  ) : null}
-                  {s.remarks ? (
-                    <div className="mt-2 text-sm text-slate-700">
-                      <span className="text-xs font-semibold text-slate-500">
-                        {lang === "zh" ? "备注" : "Notes"}：
-                      </span>{" "}
-                      {s.remarks}
-                    </div>
-                  ) : null}
-                </div>
-              );
-            })}
+          <div className="space-y-3">
+            {futureSessions.map((s: any) => (
+              <BookingSessionListItem
+                key={s.id}
+                id={s.id}
+                nextBookingAt={s.next_booking_at}
+                venueName={s.venues?.name}
+                modeCode={s.lesson_modes?.code}
+                students={futureBySession.get(s.id) ?? []}
+                remarks={s.remarks}
+                lang={lang}
+              />
+            ))}
           </div>
         )}
       </section>
+
     </div>
   );
 }

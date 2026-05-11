@@ -64,7 +64,7 @@ export default async function NewStudentPage({
           <label className="block text-sm font-medium text-slate-900">姓名</label>
           <input
             name="name"
-            className="mt-2 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none focus:border-cyan-600 focus:ring-2 focus:ring-cyan-500/25"
+            className="mt-2 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none focus:border-sky-600 focus:ring-2 focus:ring-sky-500/25"
             placeholder="例如：小明"
           />
         </div>
@@ -74,7 +74,7 @@ export default async function NewStudentPage({
           </label>
           <input
             name="phone"
-            className="mt-2 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none focus:border-cyan-600 focus:ring-2 focus:ring-cyan-500/25"
+            className="mt-2 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none focus:border-sky-600 focus:ring-2 focus:ring-sky-500/25"
             placeholder="例如：138xxxx"
           />
         </div>
@@ -84,13 +84,13 @@ export default async function NewStudentPage({
           </label>
           <textarea
             name="notes"
-            className="mt-2 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none focus:border-cyan-600 focus:ring-2 focus:ring-cyan-500/25"
+            className="mt-2 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none focus:border-sky-600 focus:ring-2 focus:ring-sky-500/25"
             placeholder="例如：反手需要加强、脚步慢"
             rows={4}
           />
         </div>
 
-        <button className="rounded-xl bg-gradient-to-r from-slate-700 to-slate-800 shadow-md shadow-slate-900/15 px-4 py-2 text-sm font-medium text-white">
+        <button className="rounded-xl bg-gradient-to-r from-sky-600 to-sky-700 shadow-md shadow-sky-900/15 px-4 py-2 text-sm font-medium text-white">
           创建
         </button>
       </form>

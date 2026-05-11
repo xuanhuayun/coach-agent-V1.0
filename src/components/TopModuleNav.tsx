@@ -22,8 +22,8 @@ export function TopModuleNav({ items }: { items: Item[] }) {
             href={it.href}
             className={`rounded-full px-3 py-2 text-xs font-semibold transition-colors ${
               active
-                ? "bg-slate-900 text-white shadow-sm shadow-slate-900/10"
-                : "border border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
+                ? "bg-sky-700 text-white shadow-sm shadow-sky-900/10"
+                : "border border-sky-200 bg-white text-slate-700 hover:bg-sky-50/80"
             }`}
           >
             {it.label}

@@ -15,6 +15,8 @@ export function SessionStudentsAndImprovements({
   betweenSelectedAndImprovements,
   showImprovements = true,
   returnTo = "/sessions",
+  selectedIds: controlledSelectedIds,
+  onSelectedIdsChange,
 }: {
   students: Student[];
   lang: Lang;
@@ -23,21 +25,33 @@ export function SessionStudentsAndImprovements({
   betweenSelectedAndImprovements?: React.ReactNode;
   showImprovements?: boolean;
   returnTo?: string;
+  selectedIds?: string[];
+  onSelectedIdsChange?: (ids: string[]) => void;
 }) {
+  const isControlled = onSelectedIdsChange != null;
   const idsFingerprint = useMemo(
     () => students.map((s) => s.id).sort().join("\n"),
     [students],
   );
 
   const [query, setQuery] = useState("");
-  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [internalSelectedIds, setInternalSelectedIds] = useState<string[]>([]);
+  const selectedIds = isControlled ? (controlledSelectedIds ?? []) : internalSelectedIds;
   const selectedSet = useMemo(() => new Set(selectedIds), [selectedIds]);
-  const [limitMsg, setLimitMsg] = useState<string | null>(null);
-
   const [improvements, setImprovements] = useState<Record<string, string>>({});
   const [sameAsAbove, setSameAsAbove] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
+    const validIds = new Set(students.map((s) => s.id));
+    const next = selectedIds.filter((id) => validIds.has(id));
+    if (next.length === selectedIds.length) return;
+    if (isControlled) onSelectedIdsChange?.(next);
+    else setInternalSelectedIds(next);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [idsFingerprint, students]);
+
+  useEffect(() => {
+    if (isControlled) return;
     const validIds = new Set(students.map((s) => s.id));
     try {
       const raw = localStorage.getItem(LAST_SESSION_STUDENT_IDS_KEY);
@@ -45,11 +59,11 @@ export function SessionStudentsAndImprovements({
       const arr = JSON.parse(raw) as unknown;
       if (!Array.isArray(arr)) return;
       const next = arr.filter((id): id is string => typeof id === "string" && validIds.has(id));
-      setSelectedIds(next);
+      setInternalSelectedIds(next);
     } catch {
       /* ignore */
     }
-  }, [idsFingerprint, students]);
+  }, [idsFingerprint, students, isControlled]);
 
   useEffect(() => {
     onSelectedCountChange?.(selectedIds.length);
@@ -59,16 +73,20 @@ export function SessionStudentsAndImprovements({
     if (!requiredCount) return;
     if (selectedIds.length <= requiredCount) return;
     const next = selectedIds.slice(0, requiredCount);
-    setSelectedIds(next);
-    persist(next);
-    setLimitMsg(
-      lang === "zh" ? `该模式只能选 ${requiredCount} 人。` : `Limit: ${requiredCount} students.`,
-    );
+    if (next.length !== selectedIds.length) replaceSelectedIds(next);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [requiredCount]);
+  }, [requiredCount, selectedIds.length]);
 
   function persist(next: string[]) {
     localStorage.setItem(LAST_SESSION_STUDENT_IDS_KEY, JSON.stringify(next));
+  }
+
+  function replaceSelectedIds(next: string[]) {
+    if (isControlled) onSelectedIdsChange?.(next);
+    else {
+      setInternalSelectedIds(next);
+      persist(next);
+    }
   }
 
   const filtered = useMemo(() => {
@@ -77,27 +95,31 @@ export function SessionStudentsAndImprovements({
     return students.filter((s) => s.name.toLowerCase().includes(q));
   }, [students, query]);
 
-  function toggle(id: string) {
-    setLimitMsg(null);
-    setSelectedIds((prev) => {
-      const exists = prev.includes(id);
-      if (!exists && requiredCount && prev.length >= requiredCount) {
-        setLimitMsg(
-          lang === "zh" ? `该模式只能选 ${requiredCount} 人。` : `Limit: ${requiredCount} students.`,
-        );
-        return prev;
-      }
-      const next = exists ? prev.filter((x) => x !== id) : [...prev, id];
-      persist(next);
-      return next;
+  function clearStudentState(id: string) {
+    setSameAsAbove((m) => {
+      const n = { ...m };
+      delete n[id];
+      return n;
     });
-    if (selectedSet.has(id)) {
-      setSameAsAbove((m) => {
-        const n = { ...m };
-        delete n[id];
-        return n;
-      });
-    }
+    setImprovements((m) => {
+      const n = { ...m };
+      delete n[id];
+      return n;
+    });
+  }
+
+  function toggle(id: string) {
+    const exists = selectedIds.includes(id);
+    if (!exists && requiredCount && selectedIds.length >= requiredCount) return;
+    const next = exists ? selectedIds.filter((x) => x !== id) : [...selectedIds, id];
+    replaceSelectedIds(next);
+    if (exists) clearStudentState(id);
+  }
+
+  function removeStudent(id: string) {
+    if (!selectedIds.includes(id)) return;
+    replaceSelectedIds(selectedIds.filter((x) => x !== id));
+    clearStudentState(id);
   }
 
   const selectedStudents = useMemo(() => {
@@ -112,8 +134,7 @@ export function SessionStudentsAndImprovements({
           add: "+ 学员",
           empty: "没有匹配的学员。",
           none: "还没有学员。",
-          selectedCount: (n: number) => `已选 ${n} 人`,
-          clear: "清空",
+          selected: "已选学员",
           improvements: "改进点（按学员）",
           same: "同上",
         }
@@ -122,8 +143,7 @@ export function SessionStudentsAndImprovements({
           add: "+ Student",
           empty: "No matches.",
           none: "No students yet.",
-          selectedCount: (n: number) => `${n} selected`,
-          clear: "Clear",
+          selected: "Selected",
           improvements: "Improvements (per student)",
           same: "Same",
         };
@@ -150,7 +170,7 @@ export function SessionStudentsAndImprovements({
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder={t.search}
-          className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-cyan-600 focus:ring-2 focus:ring-cyan-500/25 sm:max-w-xs"
+          className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-sky-600 focus:ring-2 focus:ring-sky-500/25 sm:max-w-xs"
           autoComplete="off"
         />
         <Link
@@ -159,23 +179,6 @@ export function SessionStudentsAndImprovements({
         >
           {t.add}
         </Link>
-      </div>
-
-      <div className="flex items-center justify-between">
-        <div className="text-sm font-medium text-slate-700">
-          {t.selectedCount(selectedIds.length)}
-        </div>
-        <button
-          type="button"
-          onClick={() => {
-            setSelectedIds([]);
-            persist([]);
-            setSameAsAbove({});
-          }}
-          className="text-sm font-medium text-slate-600 hover:text-slate-800"
-        >
-          {t.clear}
-        </button>
       </div>
 
       {query.trim() ? (
@@ -188,7 +191,7 @@ export function SessionStudentsAndImprovements({
                 key={s.id}
                 className={`flex cursor-pointer items-center gap-2 rounded-xl border px-3 py-2.5 text-sm transition-colors ${
                   selectedSet.has(s.id)
-                    ? "border-cyan-600/45 bg-cyan-50/70 text-slate-900 shadow-sm shadow-slate-200/30"
+                    ? "border-sky-600/45 bg-sky-50/70 text-slate-900 shadow-sm shadow-slate-200/30"
                     : "border-slate-200 bg-white/90 text-slate-800 hover:border-slate-300"
                 }`}
               >
@@ -196,7 +199,7 @@ export function SessionStudentsAndImprovements({
                   type="checkbox"
                   checked={selectedSet.has(s.id)}
                   onChange={() => toggle(s.id)}
-                  className="h-4 w-4 shrink-0 rounded border-slate-400 text-cyan-600 focus:ring-cyan-500/30"
+                  className="h-4 w-4 shrink-0 rounded border-slate-400 text-sky-600 focus:ring-sky-500/30"
                 />
                 <span className="truncate font-medium">{s.name}</span>
               </label>
@@ -205,19 +208,36 @@ export function SessionStudentsAndImprovements({
         )
       ) : null}
 
-      {limitMsg ? <div className="text-sm text-red-600">{limitMsg}</div> : null}
-
-      {/* Selected names first */}
       {selectedStudents.length > 0 ? (
-        <div className="flex flex-wrap gap-2">
-          {selectedStudents.map((s) => (
-            <span
-              key={s.id}
-              className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-sm font-medium text-slate-800"
-            >
-              {s.name}
-            </span>
-          ))}
+        <div className="space-y-2">
+          <div className="text-xs font-semibold text-slate-700">{t.selected}</div>
+          <div className="grid gap-2 sm:grid-cols-2">
+            {selectedStudents.map((s) => (
+              <div
+                key={s.id}
+                className="relative flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white px-3 py-2 pr-8"
+              >
+                <div className="truncate text-sm font-semibold text-slate-900">{s.name}</div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const ok = window.confirm(
+                      lang === "zh"
+                        ? `确认移除学员「${s.name}」？`
+                        : `Remove student “${s.name}”?`,
+                    );
+                    if (!ok) return;
+                    removeStudent(s.id);
+                  }}
+                  className="absolute right-2 top-2 inline-flex h-6 w-6 items-center justify-center rounded-full border border-red-200 bg-red-50 text-sm font-bold leading-none text-red-700 hover:bg-red-100"
+                  aria-label={lang === "zh" ? `移除 ${s.name}` : `Remove ${s.name}`}
+                  title={lang === "zh" ? "移除" : "Remove"}
+                >
+                  ×
+                </button>
+              </div>
+            ))}
+          </div>
         </div>
       ) : null}
 
@@ -249,7 +269,7 @@ export function SessionStudentsAndImprovements({
                               setImprovements((m) => ({ ...m, [s.id]: m[prevId] ?? "" }));
                             }
                           }}
-                          className="h-4 w-4 rounded border-slate-400 text-cyan-600 focus:ring-cyan-500/30"
+                          className="h-4 w-4 rounded border-slate-400 text-sky-600 focus:ring-sky-500/30"
                         />
                         {t.same}
                       </label>
@@ -264,7 +284,7 @@ export function SessionStudentsAndImprovements({
                       setImprovements((m) => ({ ...m, [s.id]: v }));
                     }}
                     rows={2}
-                    className={`mt-2 w-full rounded-xl border px-3 py-2 text-sm outline-none focus:border-cyan-600 focus:ring-2 focus:ring-cyan-500/25 ${
+                    className={`mt-2 w-full rounded-xl border px-3 py-2 text-sm outline-none focus:border-sky-600 focus:ring-2 focus:ring-sky-500/25 ${
                       isSame ? "border-slate-200 bg-slate-50 text-slate-700" : "border-slate-300 bg-white"
                     }`}
                   />

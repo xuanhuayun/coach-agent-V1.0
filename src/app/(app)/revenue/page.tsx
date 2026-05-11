@@ -4,7 +4,14 @@ import { enUS, zhCN } from "date-fns/locale";
 import { requireUser } from "@/lib/supabase/guards";
 import { getLang } from "@/lib/i18n-server";
 import { dict, type Lang } from "@/lib/i18n";
-import { sessionDurationHours } from "@/lib/lesson";
+import { formatHours, sessionDurationHours } from "@/lib/lesson";
+import { formatLessonModeRatio } from "@/lib/lesson-mode";
+import { formatSgdFromCents } from "@/lib/money";
+import {
+  queryRevenueSessions,
+  querySessionDurationIds,
+  querySessionsOnDate,
+} from "@/lib/session-queries";
 import { InfoTip } from "@/components/InfoTip";
 import {
   parseFinancePreset,
@@ -83,11 +90,7 @@ function mapSessionsToRows(
       id: s.id,
       date: s.session_date,
       venueName: s.venues?.name ?? (lang === "zh" ? "（未填场地）" : "(No venue)"),
-      modeLabel: mode
-        ? `${mode.code} · ${mode.label}`
-        : lang === "zh"
-          ? "（未填模式）"
-          : "(No mode)",
+      modeLabel: formatLessonModeRatio(mode?.code, lang),
       perPersonCents,
       headcount,
       revenueCents,
@@ -95,9 +98,6 @@ function mapSessionsToRows(
     };
   });
 }
-
-const sessionSelect =
-  "id,session_date,price_cents,duration_hours,venue_id,lesson_mode_id, venues(name), lesson_modes(code,label,default_price_cents)";
 
 export default async function RevenuePage({
   searchParams,
@@ -130,14 +130,9 @@ export default async function RevenuePage({
   const todayYmd = singaporeTodayYmd();
   const effectiveToStr = toStr > todayYmd ? todayYmd : toStr;
 
-  const [{ data: rangeSessions }, { data: todaySessions }] = await Promise.all([
-    supabase
-      .from("sessions")
-      .select(sessionSelect)
-      .gte("session_date", fromStr)
-      .lte("session_date", effectiveToStr)
-      .order("session_date", { ascending: false }),
-    supabase.from("sessions").select(sessionSelect).eq("session_date", todayYmd),
+  const [rangeSessions, todaySessions] = await Promise.all([
+    queryRevenueSessions(supabase, { fromStr, toStr: effectiveToStr }),
+    querySessionsOnDate(supabase, todayYmd),
   ]);
 
   const rangeIds = (rangeSessions ?? []).map((s: { id: string }) => s.id);
@@ -155,6 +150,7 @@ export default async function RevenuePage({
   const rows = mapSessionsToRows(rangeSessions, ssForRange, lang);
   const todayRows = mapSessionsToRows(todaySessions, ssForToday, lang);
   const todayCents = todayRows.reduce((acc, r) => acc + r.revenueCents, 0);
+  const todayHours = Math.round(todayRows.reduce((acc, r) => acc + r.durationHours, 0) * 10) / 10;
 
   const totalCents = rows.reduce((acc, r) => acc + r.revenueCents, 0);
   const totalHours = rows.reduce((acc, r) => acc + r.durationHours, 0);
@@ -181,11 +177,10 @@ export default async function RevenuePage({
   /* Top 5 students by hours this calendar month (Singapore) */
   const { fromStr: topFrom, toStr: topTo } = singaporeCurrentMonthRange();
   const topEffectiveTo = topTo > todayYmd ? todayYmd : topTo;
-  const { data: monthSessions } = await supabase
-    .from("sessions")
-    .select("id,duration_hours")
-    .gte("session_date", topFrom)
-    .lte("session_date", topEffectiveTo);
+  const monthSessions = await querySessionDurationIds(supabase, {
+    fromStr: topFrom,
+    toStr: topEffectiveTo,
+  });
 
   const monthSessIds = (monthSessions ?? []).map((s: { id: string }) => s.id);
   const { data: monthLinks } =
@@ -225,6 +220,9 @@ export default async function RevenuePage({
     { id: "year", label: d.finance_preset_year },
     { id: "custom", label: d.finance_preset_custom },
   ];
+  const financeTitleClass = "text-sm font-semibold text-slate-800";
+  const periodModuleClass =
+    "inline-flex items-center justify-center rounded-lg border px-2.5 py-1.5 text-center text-xs font-semibold transition-colors";
 
   return (
     <div className="max-w-4xl space-y-6">
@@ -241,54 +239,42 @@ export default async function RevenuePage({
         </div>
       </div>
 
-      <section className="overflow-hidden rounded-2xl border border-slate-300 bg-gradient-to-br from-slate-50 via-white to-slate-100 p-6 shadow-sm shadow-slate-200/40">
-        <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-          {d.finance_today_title}
-        </div>
-        {todayCents > 0 ? (
-          <p className="mt-3 text-sm leading-relaxed text-slate-900">
-            <span className="font-semibold text-slate-700">{d.finance_today_great}</span>{" "}
-            {d.finance_today_amount}
-            <span className="text-lg font-bold text-cyan-700">
-              {(todayCents / 100).toFixed(0)}
-            </span>
-            {d.finance_today_tail}
-          </p>
-        ) : (
-          <p className="mt-3 text-sm leading-relaxed text-slate-800/90">{d.finance_today_zero}</p>
-        )}
+      <section className="rounded-2xl border border-sky-100 bg-gradient-to-br from-sky-50/80 via-white to-sky-50/40 p-5 shadow-sm shadow-sky-100/40">
+        <div className={financeTitleClass}>{d.finance_today_title}</div>
+        <p className="mt-2 text-sm text-slate-900">
+          {formatSgdFromCents(todayCents)} · {formatHours(todayHours, lang)}
+        </p>
       </section>
 
-      <section className="rounded-2xl border border-slate-200 bg-white p-5">
-        <h2 className="text-sm font-semibold text-slate-900">{d.finance_period_title}</h2>
-        <div className="mt-4 flex flex-wrap gap-2">
-          {presetTabs.map((t) => {
-            const active = preset === t.id;
-            const href =
-              t.id === "custom"
-                ? `/revenue?preset=custom&from=${encodeURIComponent(fromStr)}&to=${encodeURIComponent(toStr)}`
-                : `/revenue?preset=${t.id}`;
-            return (
-              <Link
-                key={t.id}
-                href={href}
-                className={`rounded-full px-4 py-2 text-sm font-semibold transition-colors ${
-                  active
-                    ? "bg-gradient-to-r from-slate-700 to-slate-800 text-white shadow-md shadow-slate-900/12"
-                    : "border border-slate-300 bg-slate-100 text-slate-800 hover:bg-slate-100"
-                }`}
-              >
-                {t.label}
-              </Link>
-            );
-          })}
-        </div>
+      <div className="flex flex-wrap gap-1.5">
+        {presetTabs.map((t) => {
+          const active = preset === t.id;
+          const href =
+            t.id === "custom"
+              ? `/revenue?preset=custom&from=${encodeURIComponent(fromStr)}&to=${encodeURIComponent(toStr)}`
+              : `/revenue?preset=${t.id}`;
+          return (
+            <Link
+              key={t.id}
+              href={href}
+              className={`${periodModuleClass} ${financeTitleClass} ${
+                active
+                  ? "border-sky-700 bg-gradient-to-r from-sky-600 to-sky-700 text-white shadow-md shadow-sky-900/12"
+                  : "border-slate-200 bg-white text-slate-800 hover:bg-slate-50"
+              }`}
+            >
+              {t.label}
+            </Link>
+          );
+        })}
+      </div>
 
-        {preset === "custom" && (
+      {preset === "custom" ? (
+        <section className="rounded-2xl border border-slate-200 bg-white p-5">
           <form
             action="/revenue"
             method="get"
-            className="mt-4 flex flex-wrap items-end gap-3 rounded-xl border border-slate-200 bg-slate-50/90 p-4"
+            className="flex flex-wrap items-end gap-3 rounded-xl border border-slate-200 bg-slate-50/90 p-4"
           >
             <input type="hidden" name="preset" value="custom" />
             <div>
@@ -315,20 +301,13 @@ export default async function RevenuePage({
             </div>
             <button
               type="submit"
-              className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-emerald-200 bg-emerald-50 text-base font-bold leading-none text-emerald-700 shadow-sm hover:bg-emerald-100"
-              aria-label={d.finance_apply}
-              title={d.finance_apply}
+              className="rounded-xl bg-gradient-to-r from-sky-600 to-sky-700 px-4 py-2 text-sm font-medium text-white shadow-md shadow-sky-900/15 hover:from-sky-700 hover:to-sky-800"
             >
-              🔍
-              <span className="sr-only">{d.finance_apply}</span>
+              {lang === "zh" ? "保存" : "Save"}
             </button>
           </form>
-        )}
-
-        <p className="mt-3 text-xs text-slate-500">
-          {fromStr} — {toStr}
-        </p>
-      </section>
+        </section>
+      ) : null}
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <div className="rounded-2xl border border-slate-200 bg-white p-5">
@@ -340,7 +319,7 @@ export default async function RevenuePage({
             {lang === "zh" ? "区间收入" : "Revenue"}
           </div>
             <div className="mt-2 text-lg font-semibold tracking-tight">
-            S${(totalCents / 100).toFixed(0)}
+            {formatSgdFromCents(totalCents)}
           </div>
         </div>
         <div className="rounded-2xl border border-slate-200 bg-white p-5">
@@ -353,8 +332,8 @@ export default async function RevenuePage({
           <div className="text-xs text-slate-500">
             {lang === "zh" ? "当前区间" : "Range"}
           </div>
-          <div className="mt-2 text-sm font-medium text-slate-900">
-            {presetTabs.find((t) => t.id === preset)?.label ?? preset}
+          <div className="mt-2 text-sm font-medium text-slate-800">
+            {fromStr} — {toStr}
           </div>
         </div>
       </div>
@@ -377,26 +356,25 @@ export default async function RevenuePage({
         {topRows.length === 0 ? (
           <p className="mt-4 text-sm text-slate-600/90">{d.finance_no_students_month}</p>
         ) : (
-          <ol className="mt-4 space-y-3">
+          <ol className="mt-4 space-y-2">
             {topRows.map((r, i) => (
               <li
                 key={r.id}
-                className="flex items-center justify-between rounded-xl border border-slate-100 bg-slate-100/80 px-4 py-3"
+                className="flex items-center justify-between rounded-xl border border-slate-100 bg-slate-100/80 px-3 py-2"
               >
-                <div className="flex min-w-0 items-center gap-3">
-                  <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-white text-sm font-bold text-cyan-700 shadow-sm">
+                <div className="flex min-w-0 items-center gap-2">
+                  <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-white text-xs font-semibold text-sky-700 shadow-sm">
                     {i + 1}
                   </span>
                   <Link
                     href={`/students/${r.id}`}
-                    className="truncate font-medium text-slate-900 hover:underline"
+                    className="truncate text-xs font-semibold text-slate-800 hover:underline"
                   >
                     {r.name}
                   </Link>
                 </div>
-                <div className="shrink-0 text-right">
-                  <div className="text-sm font-semibold text-slate-900">{r.hours}h</div>
-                  <div className="text-xs text-slate-500">{d.finance_top_hours}</div>
+                <div className="shrink-0 text-right text-xs font-semibold text-slate-800">
+                  {formatHours(r.hours, lang)}
                 </div>
               </li>
             ))}

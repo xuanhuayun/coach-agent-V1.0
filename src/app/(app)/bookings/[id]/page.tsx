@@ -1,8 +1,11 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireUser } from "@/lib/supabase/guards";
+import { dict } from "@/lib/i18n";
 import { getLang } from "@/lib/i18n-server";
-import { updateBooking } from "../actions";
+import { sortLessonModes } from "@/lib/lesson-mode";
+import { ensureLessonModes, listLessonModes } from "@/lib/lesson-modes-server";
+import { deleteBooking, updateBooking } from "../actions";
 import { EditBookingForm } from "./EditBookingForm";
 
 export default async function BookingDetailPage({
@@ -16,12 +19,14 @@ export default async function BookingDetailPage({
 
   const { supabase } = await requireUser();
   const lang = await getLang();
+  const d = dict[lang];
 
-  const [{ data: venues }, { data: modes }, { data: students }] = await Promise.all([
+  const [{ data: venues }, modesRaw, { data: students }] = await Promise.all([
     supabase.from("venues").select("id,name").order("created_at", { ascending: false }),
-    supabase.from("lesson_modes").select("id,code,label,default_price_cents").order("code", { ascending: true }),
+    listLessonModes(supabase),
     supabase.from("students").select("id,name").order("created_at", { ascending: false }),
   ]);
+  const modes = sortLessonModes(modesRaw);
 
   const q = await supabase
     .from("sessions")
@@ -55,13 +60,13 @@ export default async function BookingDetailPage({
 
   return (
     <div className="max-w-3xl space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-lg font-semibold tracking-tight text-slate-900">
+      <div>
+        <Link href="/bookings" className="text-xs text-slate-500 hover:text-slate-800">
+          ← {lang === "zh" ? `返回${d.nav_bookings}` : `Back to ${d.nav_bookings}`}
+        </Link>
+        <h1 className="mt-2 text-lg font-semibold tracking-tight text-slate-900">
           {lang === "zh" ? "约课详情" : "Booking detail"}
         </h1>
-        <Link href="/bookings" className="text-sm font-medium text-slate-600 hover:text-slate-800">
-          {lang === "zh" ? "返回今日已约" : "Back"}
-        </Link>
       </div>
 
       <EditBookingForm
@@ -77,6 +82,7 @@ export default async function BookingDetailPage({
         initialRemarks={(session as any).remarks ?? null}
         initialStudentIds={initialStudentIds}
         action={updateBooking}
+        deleteAction={deleteBooking}
       />
     </div>
   );

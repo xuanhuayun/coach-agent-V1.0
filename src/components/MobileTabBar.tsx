@@ -20,7 +20,7 @@ export function MobileTabBar({
 
   return (
     <nav
-      className="fixed bottom-0 left-0 right-0 z-50 border-t border-slate-200/90 bg-white/85 backdrop-blur-lg sm:hidden"
+      className="fixed bottom-0 left-0 right-0 z-50 border-t border-sky-100/90 bg-sky-50/92 backdrop-blur-lg sm:hidden"
       style={{ paddingBottom: "max(0.5rem, env(safe-area-inset-bottom))" }}
     >
       <div className="mx-auto flex max-w-lg justify-between gap-1 px-2 pt-1">
@@ -33,8 +33,8 @@ export function MobileTabBar({
               href={tab.href}
               className={`flex min-h-12 min-w-0 flex-1 flex-col items-center justify-center rounded-2xl px-1 py-1.5 text-xs font-semibold leading-tight transition-colors ${
                 active
-                  ? "bg-slate-200/80 text-slate-800 shadow-inner shadow-slate-300/40"
-                  : "text-slate-500 active:bg-slate-50"
+                  ? "bg-sky-100/90 text-sky-950 shadow-inner shadow-sky-200/50"
+                  : "text-slate-600 active:bg-sky-50/80"
               }`}
             >
               <span className="text-sm leading-none" aria-hidden>

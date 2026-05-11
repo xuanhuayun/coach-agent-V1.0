@@ -1,10 +1,11 @@
 import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/supabase/guards";
+import { setSessionStudentPaid } from "@/lib/session-student-paid-state";
 
 type Body = { sessionId?: string; studentId?: string; paid?: boolean };
 
 export async function POST(req: Request) {
-  const { supabase } = await requireUser();
+  const { supabase, user } = await requireUser();
 
   let body: Body = {};
   try {
@@ -20,27 +21,10 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "missing_params" }, { status: 400 });
   }
 
-  const { error } = await supabase
-    .from("session_students")
-    .update({ paid })
-    .eq("session_id", sessionId)
-    .eq("student_id", studentId);
-
-  if (error) {
-    const msg = String((error as any)?.message ?? "");
-    if ((error as any)?.code === "PGRST204" || msg.toLowerCase().includes("paid")) {
-      return NextResponse.json(
-        {
-          error: "missing_paid_column",
-          message:
-            "数据库缺少 paid 字段。请执行迁移 `20260510_add_session_student_paid.sql` 后再使用已付款功能。",
-        },
-        { status: 409 },
-      );
-    }
-    return NextResponse.json({ error: "update_failed", message: msg }, { status: 500 });
+  const result = await setSessionStudentPaid(supabase, user.id, { sessionId, studentId }, paid);
+  if (!result.ok) {
+    return NextResponse.json({ error: "update_failed", message: result.message }, { status: 500 });
   }
 
   return NextResponse.json({ ok: true });
 }
-

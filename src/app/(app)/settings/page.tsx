@@ -5,7 +5,11 @@ import { getLang } from "@/lib/i18n-server";
 import { dict } from "@/lib/i18n";
 import { LangToggle } from "@/components/LangToggle";
 import { InfoTip } from "@/components/InfoTip";
+import { parseSgdInput } from "@/lib/money";
 import { toastUrl } from "@/lib/toast";
+import { lessonModeDefinitionByCode, sortLessonModes } from "@/lib/lesson-mode";
+import { ensureLessonModes, listLessonModes } from "@/lib/lesson-modes-server";
+import { isPgRestMissingColumn } from "@/lib/session-queries";
 import { SettingsActionsClient } from "./SettingsActionsClient";
 
 async function createVenue(formData: FormData) {
@@ -59,46 +63,43 @@ async function deleteVenue(formData: FormData) {
 async function upsertLessonMode(formData: FormData) {
   "use server";
   const code = String(formData.get("code") ?? "").trim();
-  const price = Number(formData.get("price") ?? 0);
-  if (!code || Number.isNaN(price) || price < 0) {
+  const price = parseSgdInput(String(formData.get("price") ?? ""));
+  if (!code || price == null) {
     redirect(toastUrl("/settings", "error", "价格格式不正确。"));
   }
 
-  const fixedLabel =
-    code === "1:1"
-      ? "一对一"
-      : code === "1:2"
-        ? "一对二"
-        : code === "1:3"
-          ? "一对三"
-          : code === "1:4"
-            ? "一对四"
-            : code;
+  const def = lessonModeDefinitionByCode(code);
+  const fixedLabel = def ? def.labelZh : code;
 
   const { supabase, user } = await requireUser();
-  const { error } = await supabase.from("lesson_modes").upsert(
-    {
-      user_id: user.id,
-      code,
-      label: fixedLabel,
-      default_price_cents: Math.round(price * 100),
-    },
-    { onConflict: "user_id,code" },
-  );
+  const row: Record<string, unknown> = {
+    user_id: user.id,
+    code,
+    label: fixedLabel,
+    default_price_cents: Math.round(price * 100),
+  };
+  if (def) row.default_duration_hours = def.durationHours;
+  let { error } = await supabase.from("lesson_modes").upsert(row, { onConflict: "user_id,code" });
+  if (error && row.default_duration_hours != null && isPgRestMissingColumn(error, "default_duration_hours")) {
+    const { default_duration_hours: _removed, ...rest } = row;
+    ({ error } = await supabase.from("lesson_modes").upsert(rest, { onConflict: "user_id,code" }));
+  }
   if (error) redirect(toastUrl("/settings", "error", "保存失败，请稍后重试。"));
   revalidatePath("/settings");
   redirect(toastUrl("/settings", "success", "保存成功。"));
 }
 
 export default async function SettingsPage() {
-  const { supabase } = await requireUser();
+  const { supabase, user } = await requireUser();
+  await ensureLessonModes(supabase, user.id);
   const lang = await getLang();
   const d = dict[lang];
 
-  const [{ data: venues }, { data: modes }] = await Promise.all([
+  const [{ data: venues }, modesRaw] = await Promise.all([
     supabase.from("venues").select("*").order("created_at", { ascending: false }),
-    supabase.from("lesson_modes").select("*").order("code", { ascending: true }),
+    listLessonModes(supabase),
   ]);
+  const modes = sortLessonModes(modesRaw);
 
   return (
     <div className="max-w-4xl space-y-10">
@@ -108,15 +109,6 @@ export default async function SettingsPage() {
           <InfoTip text={`${d.currencyHint} · ${d.pricePerPerson}`} />
         </div>
       </div>
-
-      <section className="rounded-2xl border border-slate-200 bg-white p-6">
-        <div className="flex items-center gap-2">
-          <h2 className="text-sm font-semibold text-slate-900">
-            {lang === "zh" ? "设置" : "Settings"}
-          </h2>
-          <InfoTip text={`${d.currencyHint} · ${d.pricePerPerson}`} />
-        </div>
-      </section>
 
       <SettingsActionsClient
         lang={lang}

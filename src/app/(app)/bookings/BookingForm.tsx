@@ -1,21 +1,32 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import type { Lang } from "@/lib/i18n";
+import {
+  formatLessonModeOption,
+  requiredCountFromModeCode,
+  resolveModeDurationHours,
+} from "@/lib/lesson-mode";
+import {
+  clearBookingDraft,
+  createEmptyBookingDraft,
+  readBookingDraft,
+  writeBookingDraft,
+  type BookingDraft,
+} from "@/lib/booking-draft";
 import { NextBookingPicker } from "@/components/NextBookingPicker";
 
 type Venue = { id: string; name: string };
-type Mode = { id: string; code: string; label: string; default_price_cents: number };
+type Mode = {
+  id: string;
+  code: string;
+  label: string;
+  default_price_cents: number;
+  default_duration_hours?: number | null;
+};
 type Student = { id: string; name: string };
 type RecentStudent = { id: string; name: string; lastDate: string };
-
-function requiredCountFromCode(code: string | null | undefined): number | null {
-  if (!code) return null;
-  const m = /^1:(\d)$/.exec(code.trim());
-  if (!m) return null;
-  const n = Number(m[1]);
-  return n >= 1 && n <= 4 ? n : null;
-}
 
 export function BookingForm({
   lang,
@@ -32,38 +43,95 @@ export function BookingForm({
   recentStudents: RecentStudent[];
   action: (formData: FormData) => void;
 }) {
+  const searchParams = useSearchParams();
   const formRef = useRef<HTMLFormElement | null>(null);
   const bypassSubmitRef = useRef(false);
-  const [modeId, setModeId] = useState("");
-  const [query, setQuery] = useState("");
-  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [draft, setDraft] = useState<BookingDraft>(() => createEmptyBookingDraft());
+  const [hydrated, setHydrated] = useState(false);
   const [submitErr, setSubmitErr] = useState<string | null>(null);
+  const [fieldErr, setFieldErr] = useState<{ mode?: string; time?: string }>({});
 
-  const mode = useMemo(() => modes.find((m) => m.id === modeId) ?? null, [modes, modeId]);
-  const requiredCount = requiredCountFromCode(mode?.code);
-  const mismatch = requiredCount != null && selectedIds.length !== requiredCount;
+  useEffect(() => {
+    const toast = searchParams.get("toast");
+    const msg = searchParams.get("msg") ?? "";
+    if (toast === "success" && msg.includes("保存成功")) {
+      clearBookingDraft();
+      setDraft(createEmptyBookingDraft());
+    } else {
+      const saved = readBookingDraft();
+      if (saved) setDraft(saved);
+    }
+    setHydrated(true);
+  }, [searchParams]);
 
-  const selectedSet = useMemo(() => new Set(selectedIds), [selectedIds]);
+  useEffect(() => {
+    if (!hydrated) return;
+    writeBookingDraft(draft);
+  }, [draft, hydrated]);
+
+  function patchDraft(partial: Partial<BookingDraft>) {
+    setDraft((current) => ({ ...current, ...partial }));
+  }
+
+  const mode = useMemo(() => modes.find((m) => m.id === draft.modeId) ?? null, [modes, draft.modeId]);
+  const requiredCount = requiredCountFromModeCode(mode?.code);
+  const mismatch = requiredCount != null && draft.studentIds.length !== requiredCount;
+
+  const selectedSet = useMemo(() => new Set(draft.studentIds), [draft.studentIds]);
   const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
+    const q = draft.query.trim().toLowerCase();
     if (!q) return [];
     return students.filter((s) => s.name.toLowerCase().includes(q));
-  }, [students, query]);
+  }, [students, draft.query]);
 
   function toggleStudent(id: string) {
     setSubmitErr(null);
-    setSelectedIds((prev) => {
+    setFieldErr({});
+    setDraft((current) => {
+      const prev = current.studentIds;
       const exists = prev.includes(id);
-      if (!exists && requiredCount && prev.length >= requiredCount) return prev;
-      const next = exists ? prev.filter((x) => x !== id) : [...prev, id];
-      return next;
+      if (!exists && requiredCount && prev.length >= requiredCount) return current;
+      const studentIds = exists ? prev.filter((x) => x !== id) : [...prev, id];
+      return { ...current, studentIds };
     });
   }
 
   const selectedStudents = useMemo(() => {
     const byId = new Map(students.map((s) => [s.id, s]));
-    return selectedIds.map((id) => byId.get(id)).filter(Boolean) as Student[];
-  }, [students, selectedIds]);
+    return draft.studentIds.map((id) => byId.get(id)).filter(Boolean) as Student[];
+  }, [students, draft.studentIds]);
+
+  function clearAll() {
+    clearBookingDraft();
+    setDraft(createEmptyBookingDraft());
+    setSubmitErr(null);
+    setFieldErr({});
+  }
+
+  function onModeChange(nextModeId: string) {
+    const nextMode = modes.find((m) => m.id === nextModeId) ?? null;
+    const durationHours = nextMode ? resolveModeDurationHours(nextMode) : 2;
+    const nextRequired = requiredCountFromModeCode(nextMode?.code);
+    setDraft((current) => ({
+      ...current,
+      modeId: nextModeId,
+      pickerDuration: durationHours === 1 ? "1" : "2",
+      studentIds:
+        nextRequired && current.studentIds.length > nextRequired
+          ? current.studentIds.slice(0, nextRequired)
+          : current.studentIds,
+    }));
+    setFieldErr((current) => ({ ...current, mode: undefined }));
+    setSubmitErr(null);
+  }
+
+  if (!hydrated) {
+    return (
+      <div className="space-y-4 rounded-2xl border border-slate-200 bg-white p-6">
+        <p className="text-sm text-slate-500">{lang === "zh" ? "加载中…" : "Loading…"}</p>
+      </div>
+    );
+  }
 
   return (
     <form
@@ -74,18 +142,39 @@ export function BookingForm({
           bypassSubmitRef.current = false;
           return;
         }
+
         setSubmitErr(null);
+        const nextFieldErr: { mode?: string; time?: string } = {};
+        if (!draft.modeId) {
+          nextFieldErr.mode = lang === "zh" ? "上课模式必选。" : "Mode is required.";
+        }
+
         const fd = new FormData(e.currentTarget);
         const at = String(fd.get("nextBookingAt") ?? "").trim();
+        if (!at) {
+          nextFieldErr.time = lang === "zh" ? "约课时间必填。" : "Booking time is required.";
+        }
+
+        if (nextFieldErr.mode || nextFieldErr.time) {
+          e.preventDefault();
+          setFieldErr(nextFieldErr);
+          return;
+        }
+
         const dur = Number(fd.get("nextBookingDurationHours") ?? 2);
-        if (!at) return;
         let atIso = "";
         try {
           atIso = new Date(at).toISOString();
         } catch {
           atIso = "";
         }
-        if (!atIso) return;
+        if (!atIso) {
+          e.preventDefault();
+          setFieldErr({
+            time: lang === "zh" ? "约课时间格式不正确。" : "Invalid booking time.",
+          });
+          return;
+        }
 
         e.preventDefault();
         try {
@@ -94,8 +183,10 @@ export function BookingForm({
             headers: { "content-type": "application/json" },
             body: JSON.stringify({ nextBookingAtIso: atIso, nextBookingDurationHours: dur }),
           });
-          const json = (await res.json()) as any;
-          const ids = Array.isArray(json?.conflicts) ? json.conflicts.map((c: any) => String(c.id)) : [];
+          const json = (await res.json()) as { conflicts?: Array<{ id: string }> };
+          const ids = Array.isArray(json?.conflicts)
+            ? json.conflicts.map((c) => String(c.id))
+            : [];
           const uniqueIds = Array.from(new Set(ids)).filter(Boolean);
           if (uniqueIds.length === 0) {
             bypassSubmitRef.current = true;
@@ -109,7 +200,6 @@ export function BookingForm({
           );
           return;
         } catch {
-          // If conflict check fails, allow submit (server will still save).
           bypassSubmitRef.current = true;
           formRef.current?.requestSubmit();
         }
@@ -118,10 +208,10 @@ export function BookingForm({
     >
       <div className="border-b border-slate-100 pb-4">
         <h2 className="text-sm font-semibold text-slate-900">
-          {lang === "zh" ? "只约课" : "Book only"}
+          {lang === "zh" ? "约课" : "Book"}
         </h2>
       </div>
-      {submitErr ? <div className="text-sm text-red-600">{submitErr}</div> : null}
+      {submitErr ? <div className="select-text text-sm text-red-700">{submitErr}</div> : null}
 
       <div className="grid gap-4 sm:grid-cols-2">
         <div>
@@ -130,8 +220,9 @@ export function BookingForm({
           </label>
           <select
             name="venueId"
-            className="mt-2 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-cyan-600 focus:ring-2 focus:ring-cyan-500/25"
-            defaultValue=""
+            value={draft.venueId}
+            onChange={(e) => patchDraft({ venueId: e.target.value })}
+            className="mt-2 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-sky-600 focus:ring-2 focus:ring-sky-500/25"
           >
             <option value="">{lang === "zh" ? "（不选）" : "(None)"}</option>
             {venues.map((v) => (
@@ -146,7 +237,25 @@ export function BookingForm({
           <label className="block text-sm font-medium text-slate-900">
             {lang === "zh" ? "约课时间段（必填）" : "Time (required)"}
           </label>
-          <NextBookingPicker lang={lang} />
+          <NextBookingPicker
+            lang={lang}
+            open={draft.pickerOpen}
+            onOpenChange={(open) => patchDraft({ pickerOpen: open })}
+            chosen={draft.pickerChosen}
+            onChosenChange={(chosen) => patchDraft({ pickerChosen: chosen })}
+            date={draft.pickerDate}
+            onDateChange={(date) => patchDraft({ pickerDate: date })}
+            hour={draft.pickerHour}
+            onHourChange={(hour) => patchDraft({ pickerHour: hour })}
+            minute={draft.pickerMinute}
+            onMinuteChange={(minute) => patchDraft({ pickerMinute: minute })}
+            duration={draft.pickerDuration}
+            onDurationChange={(duration) => patchDraft({ pickerDuration: duration })}
+            durationEditable={!draft.modeId}
+          />
+          {fieldErr.time ? (
+            <div className="mt-1 select-text text-sm text-red-700">{fieldErr.time}</div>
+          ) : null}
         </div>
       </div>
 
@@ -157,22 +266,23 @@ export function BookingForm({
           </label>
           <select
             name="lessonModeId"
-            required
-            value={modeId}
-            onChange={(e) => setModeId(e.target.value)}
-            className={`mt-2 w-full rounded-xl border bg-white px-3 py-2 text-sm outline-none focus:border-cyan-600 focus:ring-2 focus:ring-cyan-500/25 ${
-              !modeId ? "border-red-300" : "border-slate-300"
+            value={draft.modeId}
+            onChange={(e) => onModeChange(e.target.value)}
+            className={`mt-2 w-full rounded-xl border bg-white px-3 py-2 text-sm outline-none focus:border-sky-600 focus:ring-2 focus:ring-sky-500/25 ${
+              fieldErr.mode || !draft.modeId ? "border-red-300" : "border-slate-300"
             }`}
           >
             <option value="">{lang === "zh" ? "请选择" : "Select"}</option>
             {modes.map((m) => (
               <option key={m.id} value={m.id}>
-                {m.code}（S${Math.round(m.default_price_cents / 100)}/{lang === "zh" ? "人" : "ea"}）
+                {formatLessonModeOption(m, lang)}
               </option>
             ))}
           </select>
-          {!modeId ? (
-            <div className="mt-1 text-sm text-red-600">
+          {fieldErr.mode ? (
+            <div className="mt-1 select-text text-sm text-red-700">{fieldErr.mode}</div>
+          ) : !draft.modeId ? (
+            <div className="mt-1 select-text text-sm text-red-700">
               {lang === "zh" ? "上课模式必选。" : "Mode is required."}
             </div>
           ) : null}
@@ -185,7 +295,9 @@ export function BookingForm({
           <textarea
             name="remarks"
             rows={3}
-            className="mt-2 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none focus:border-cyan-600 focus:ring-2 focus:ring-cyan-500/25"
+            value={draft.remarks}
+            onChange={(e) => patchDraft({ remarks: e.target.value })}
+            className="mt-2 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none focus:border-sky-600 focus:ring-2 focus:ring-sky-500/25"
             placeholder={lang === "zh" ? "例如：已确认场地/自带球…" : "e.g. confirmed court..."}
           />
         </div>
@@ -208,7 +320,7 @@ export function BookingForm({
                       onClick={() => toggleStudent(s.id)}
                       className={`rounded-full border px-3 py-1 text-sm font-medium ${
                         selectedSet.has(s.id)
-                          ? "border-cyan-600/45 bg-cyan-50/70 text-slate-900"
+                          ? "border-sky-600/45 bg-sky-50/70 text-slate-900"
                           : "border-slate-200 bg-white text-slate-800 hover:border-slate-300"
                       }`}
                       title={lang === "zh" ? `最近上课：${s.lastDate}` : `Last class: ${s.lastDate}`}
@@ -222,14 +334,14 @@ export function BookingForm({
 
             <input
               type="search"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
+              value={draft.query}
+              onChange={(e) => patchDraft({ query: e.target.value })}
               placeholder={lang === "zh" ? "搜索学员姓名" : "Search by name"}
-              className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-cyan-600 focus:ring-2 focus:ring-cyan-500/25"
+              className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-sky-600 focus:ring-2 focus:ring-sky-500/25"
               autoComplete="off"
             />
 
-            {query.trim() ? (
+            {draft.query.trim() ? (
               filtered.length === 0 ? (
                 <p className="text-sm text-slate-600/90">
                   {lang === "zh" ? "没有匹配的学员。" : "No matches."}
@@ -241,7 +353,7 @@ export function BookingForm({
                       key={s.id}
                       className={`flex cursor-pointer items-center gap-2 rounded-xl border px-3 py-2.5 text-sm transition-colors ${
                         selectedSet.has(s.id)
-                          ? "border-cyan-600/45 bg-cyan-50/70 text-slate-900 shadow-sm shadow-slate-200/30"
+                          ? "border-sky-600/45 bg-sky-50/70 text-slate-900 shadow-sm shadow-slate-200/30"
                           : "border-slate-200 bg-white/90 text-slate-800 hover:border-slate-300"
                       }`}
                     >
@@ -249,7 +361,7 @@ export function BookingForm({
                         type="checkbox"
                         checked={selectedSet.has(s.id)}
                         onChange={() => toggleStudent(s.id)}
-                        className="h-4 w-4 shrink-0 rounded border-slate-400 text-cyan-600 focus:ring-cyan-500/30"
+                        className="h-4 w-4 shrink-0 rounded border-slate-400 text-sky-600 focus:ring-sky-500/30"
                       />
                       <span className="truncate font-medium">{s.name}</span>
                     </label>
@@ -267,11 +379,26 @@ export function BookingForm({
                   {selectedStudents.map((s) => (
                     <div
                       key={s.id}
-                      className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white px-3 py-2"
+                      className="relative flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white px-3 py-2 pr-8"
                     >
-                      <div className="text-sm font-semibold text-slate-900 truncate">
-                        {s.name}
-                      </div>
+                      <div className="truncate text-sm font-semibold text-slate-900">{s.name}</div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const ok = window.confirm(
+                            lang === "zh"
+                              ? `确认移除学员「${s.name}」？`
+                              : `Remove student “${s.name}”?`,
+                          );
+                          if (!ok) return;
+                          toggleStudent(s.id);
+                        }}
+                        className="absolute right-2 top-2 inline-flex h-6 w-6 items-center justify-center rounded-full border border-red-200 bg-red-50 text-sm font-bold leading-none text-red-700 hover:bg-red-100"
+                        aria-label={lang === "zh" ? `移除 ${s.name}` : `Remove ${s.name}`}
+                        title={lang === "zh" ? "移除" : "Remove"}
+                      >
+                        ×
+                      </button>
                     </div>
                   ))}
                 </div>
@@ -282,12 +409,12 @@ export function BookingForm({
               </div>
             )}
 
-            {selectedIds.map((id) => (
+            {draft.studentIds.map((id) => (
               <input key={id} type="hidden" name="studentIds" value={id} />
             ))}
           </div>
-          {modeId && requiredCount != null && mismatch ? (
-            <div className="mt-1 text-sm text-red-600">
+          {draft.modeId && requiredCount != null && mismatch ? (
+            <div className="mt-1 select-text text-sm text-red-700">
               {lang === "zh"
                 ? `该模式必须选择 ${requiredCount} 个学员。`
                 : `This mode requires exactly ${requiredCount} students.`}
@@ -296,22 +423,26 @@ export function BookingForm({
         </div>
       </div>
 
-      <div className="pt-2">
+      <div className="flex flex-wrap items-center gap-3 pt-2">
         <button
           type="submit"
           disabled={Boolean(mismatch)}
-          className={`inline-flex h-10 w-10 items-center justify-center rounded-full border text-base font-bold leading-none shadow-sm ${
+          className={`rounded-xl px-4 py-2 text-sm font-medium shadow-sm ${
             mismatch
-              ? "cursor-not-allowed border-slate-200 bg-slate-50 text-slate-300"
-              : "border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
+              ? "cursor-not-allowed bg-slate-100 text-slate-300"
+              : "bg-gradient-to-r from-sky-600 to-sky-700 text-white shadow-sky-900/15 hover:from-sky-700 hover:to-sky-800"
           }`}
-          aria-label={lang === "zh" ? "保存约课" : "Save booking"}
-          title={lang === "zh" ? "保存约课" : "Save booking"}
         >
-          ✓
+          {lang === "zh" ? "保存" : "Save"}
+        </button>
+        <button
+          type="button"
+          onClick={clearAll}
+          className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+        >
+          {lang === "zh" ? "清空" : "Clear"}
         </button>
       </div>
     </form>
   );
 }
-

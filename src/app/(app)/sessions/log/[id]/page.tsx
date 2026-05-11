@@ -123,7 +123,7 @@ export default async function LogBookedSessionPage({
           <textarea
             name="content"
             rows={7}
-            className="mt-2 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none focus:border-cyan-600 focus:ring-2 focus:ring-cyan-500/25"
+            className="mt-2 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none focus:border-sky-600 focus:ring-2 focus:ring-sky-500/25"
             placeholder={lang === "zh" ? "这次：……\n下次：……" : "This: ...\nNext: ..."}
           />
         </div>
@@ -135,13 +135,13 @@ export default async function LogBookedSessionPage({
           <textarea
             name="improvements"
             rows={3}
-            className="mt-2 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none focus:border-cyan-600 focus:ring-2 focus:ring-cyan-500/25"
+            className="mt-2 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none focus:border-sky-600 focus:ring-2 focus:ring-sky-500/25"
           />
         </div>
 
         <button
           type="submit"
-          className="rounded-xl bg-gradient-to-r from-slate-700 to-slate-800 px-4 py-2 text-sm font-medium text-white shadow-md shadow-slate-900/15"
+          className="rounded-xl bg-gradient-to-r from-sky-600 to-sky-700 px-4 py-2 text-sm font-medium text-white shadow-md shadow-sky-900/15"
         >
           {lang === "zh" ? "保存本次记录" : "Save"}
         </button>

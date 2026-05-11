@@ -2,28 +2,40 @@
 
 import { useMemo, useState } from "react";
 import type { Lang } from "@/lib/i18n";
+import { singaporeTodayYmd } from "@/lib/singapore-date";
 
-export function SessionDatePicker({ lang }: { lang: Lang }) {
-  const today = useMemo(() => new Date().toISOString().slice(0, 10), []);
-  const [value, setValue] = useState<string>(today);
+export function SessionDatePicker({
+  lang,
+  value: controlledValue,
+  onValueChange,
+}: {
+  lang: Lang;
+  value?: string;
+  onValueChange?: (value: string) => void;
+}) {
+  const todayYmd = useMemo(() => singaporeTodayYmd(), []);
+  const [internalValue, setInternalValue] = useState<string>(todayYmd);
+  const value = controlledValue ?? internalValue;
+  const isToday = value === todayYmd;
+
+  function setValue(next: string) {
+    if (onValueChange) onValueChange(next);
+    else setInternalValue(next);
+  }
 
   return (
-    <div className="mt-2 flex items-center gap-2">
-      <input
-        type="date"
-        name="sessionDate"
-        value={value}
-        onChange={(e) => setValue(e.target.value)}
-        className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none focus:border-cyan-600 focus:ring-2 focus:ring-cyan-500/25"
-      />
-      <button
-        type="button"
-        onClick={() => setValue(today)}
-        className="shrink-0 rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
-      >
-        {lang === "zh" ? "恢复今天" : "Today"}
-      </button>
-    </div>
+    <input
+      type="date"
+      name="sessionDate"
+      value={value}
+      max={todayYmd}
+      onChange={(e) => setValue(e.target.value)}
+      aria-label={lang === "zh" ? "上课日期" : "Session date"}
+      className={`mt-2 w-full rounded-xl border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-sky-500/25 ${
+        isToday
+          ? "border-sky-500 bg-sky-50/70 font-medium text-sky-950 focus:border-sky-600"
+          : "border-slate-300 bg-white text-slate-900 focus:border-sky-600"
+      }`}
+    />
   );
 }
-

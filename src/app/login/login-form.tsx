@@ -22,11 +22,14 @@ export default function LoginForm() {
 
   const [email, setEmail] = useState("");
   const [msg, setMsg] = useState<string | null>(null);
+  const [msgIsError, setMsgIsError] = useState(false);
   const [isPending, startTransition] = useTransition();
 
   async function onSendLink() {
     setMsg(null);
+    setMsgIsError(false);
     if (!supabaseConfigured) {
+      setMsgIsError(true);
       setMsg("还没配置 Supabase 环境变量，先填好 .env.local 再试。");
       return;
     }
@@ -40,13 +43,14 @@ export default function LoginForm() {
         emailRedirectTo,
       },
     });
+    setMsgIsError(Boolean(error));
     setMsg(error ? error.message : "登录链接已发到邮箱啦～去收一下，点开就能进来。");
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-900">
+    <div className="min-h-screen bg-sky-50/70 text-slate-900">
       <div className="mx-auto flex min-h-screen max-w-md flex-col justify-center px-6 py-10">
-        <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-md shadow-slate-300/30">
+        <div className="rounded-2xl border border-sky-100 bg-white p-6 shadow-md shadow-sky-100/50">
           <h1 className="text-lg font-bold tracking-tight text-slate-700">
             Coach Xing's Agent
           </h1>
@@ -55,7 +59,7 @@ export default function LoginForm() {
           </p>
 
           {devSkipUi && (
-            <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700">
+            <div className="mt-4 rounded-xl border border-sky-100 bg-sky-50/70 p-3 text-sm text-slate-700">
               你已开启本地开发跳过登录（<code className="font-mono">NEXT_PUBLIC_COACH_AGENT_DEV_SKIP=1</code>
               ）。若仍停在本页，请重启 <code className="font-mono">npm run dev</code>，并确认{" "}
               <code className="font-mono">.env.local</code> 里同时配置了 service role 与{" "}
@@ -64,13 +68,13 @@ export default function LoginForm() {
           )}
 
           {authError && (
-            <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700">
+            <div className="mt-4 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-800">
               登录失败：{authError}
             </div>
           )}
 
           {!supabaseConfigured && (
-            <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700">
+            <div className="mt-4 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-800">
               还没配置 Supabase。参考仓库里的 <code className="font-mono">env.example</code>{" "}
               配置 <code className="font-mono">.env.local</code>。
             </div>
@@ -83,7 +87,7 @@ export default function LoginForm() {
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             placeholder="you@example.com"
-            className="mt-2 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-cyan-600 focus:ring-2 focus:ring-cyan-500/25"
+            className="mt-2 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-sky-600 focus:ring-2 focus:ring-sky-500/25"
             inputMode="email"
             autoComplete="email"
           />
@@ -91,12 +95,20 @@ export default function LoginForm() {
           <button
             onClick={() => startTransition(onSendLink)}
             disabled={isPending || !email}
-            className="mt-4 inline-flex w-full items-center justify-center rounded-xl bg-gradient-to-r from-slate-700 to-slate-800 shadow-md shadow-slate-900/15 px-4 py-2 text-sm font-medium text-white disabled:opacity-40"
+            className="mt-4 inline-flex w-full items-center justify-center rounded-xl bg-gradient-to-r from-sky-600 to-sky-700 shadow-md shadow-sky-900/15 px-4 py-2 text-sm font-medium text-white disabled:opacity-40"
           >
             {isPending ? "发送中..." : "发送登录链接"}
           </button>
 
-          {msg && <p className="mt-3 text-sm text-slate-800/90">{msg}</p>}
+          {msg && (
+            <p
+              className={`mt-3 text-sm ${
+                msgIsError ? "text-red-700" : "text-emerald-800"
+              }`}
+            >
+              {msg}
+            </p>
+          )}
 
           <p className="mt-6 text-xs text-slate-500">
             登录后会自动跳转到：<code className="font-mono">{redirectTo}</code>

@@ -104,7 +104,7 @@ export function SessionStudentPicker({
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder={t.search}
-          className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-cyan-600 focus:ring-2 focus:ring-cyan-500/25 sm:max-w-xs"
+          className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-sky-600 focus:ring-2 focus:ring-sky-500/25 sm:max-w-xs"
           autoComplete="off"
         />
         <Link
@@ -142,7 +142,7 @@ export function SessionStudentPicker({
                 key={s.id}
                 className={`flex cursor-pointer items-center gap-2 rounded-xl border px-3 py-2.5 text-sm transition-colors ${
                   selected.has(s.id)
-                    ? "border-cyan-600/45 bg-cyan-50/70 text-slate-900 shadow-sm shadow-slate-200/30"
+                    ? "border-sky-600/45 bg-sky-50/70 text-slate-900 shadow-sm shadow-slate-200/30"
                     : "border-slate-200 bg-white/90 text-slate-800 hover:border-slate-300"
                 }`}
               >
@@ -150,7 +150,7 @@ export function SessionStudentPicker({
                   type="checkbox"
                   checked={selected.has(s.id)}
                   onChange={() => toggle(s.id)}
-                  className="h-4 w-4 shrink-0 rounded border-slate-400 text-cyan-600 focus:ring-cyan-500/30"
+                  className="h-4 w-4 shrink-0 rounded border-slate-400 text-sky-600 focus:ring-sky-500/30"
                 />
                 <span className="truncate font-medium">{s.name}</span>
               </label>
