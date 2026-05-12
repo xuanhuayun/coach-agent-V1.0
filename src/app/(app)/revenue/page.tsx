@@ -13,6 +13,7 @@ import {
   querySessionsOnDate,
 } from "@/lib/session-queries";
 import { InfoTip } from "@/components/InfoTip";
+import { PageModuleTitle } from "@/components/PageModuleTitle";
 import {
   parseFinancePreset,
   rangeForPreset,
@@ -228,7 +229,7 @@ export default async function RevenuePage({
     <div className="max-w-4xl space-y-6">
       <div>
         <div className="flex flex-wrap items-center gap-2">
-          <h1 className="text-lg font-semibold tracking-tight text-slate-900">{d.nav_revenue}</h1>
+          <PageModuleTitle module="/revenue">{d.nav_revenue}</PageModuleTitle>
           <InfoTip
             text={
               lang === "zh"

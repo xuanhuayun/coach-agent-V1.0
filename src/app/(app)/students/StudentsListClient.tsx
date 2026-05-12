@@ -5,6 +5,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { Lang } from "@/lib/i18n";
 import type { StudentListRowPayload } from "@/lib/students-list-page";
 import { InfoTip } from "@/components/InfoTip";
+import { PageModuleTitle } from "@/components/PageModuleTitle";
 
 export type StudentListRow = StudentListRowPayload;
 
@@ -137,7 +138,9 @@ export function StudentsListClient({
     <div className="max-w-4xl">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-2">
-          <h1 className="text-sm font-semibold tracking-tight">{t.title}</h1>
+          <PageModuleTitle module="/students" className="text-sm">
+            {t.title}
+          </PageModuleTitle>
           <InfoTip text={`${t.hint}\n\n${copy.students_recent_legend}`} />
         </div>
         <Link

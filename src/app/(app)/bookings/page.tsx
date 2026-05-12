@@ -1,4 +1,5 @@
 import { Suspense } from "react";
+import { PageModuleTitle } from "@/components/PageModuleTitle";
 import { getLang } from "@/lib/i18n-server";
 import { dict } from "@/lib/i18n";
 import { PanelLoadingFallback, SectionLoadingFallback } from "@/components/loading/PageSkeletons";
@@ -21,7 +22,7 @@ export default async function BookingsTodayPage({
 
   return (
     <div className="max-w-3xl space-y-6">
-      <h1 className="text-lg font-semibold tracking-tight text-slate-900">{d.nav_bookings}</h1>
+      <PageModuleTitle module="/bookings">{d.nav_bookings}</PageModuleTitle>
 
       <Suspense fallback={<SectionLoadingFallback rows={3} />}>
         <BookingsTodaySection selectedYmd={selectedYmd} todayYmd={todayYmd} />

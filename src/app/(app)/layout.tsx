@@ -1,16 +1,7 @@
-import { MobileTabBar } from "@/components/MobileTabBar";
 import { TopModuleNav } from "@/components/TopModuleNav";
 import { ToastBar } from "@/components/ToastBar";
 import { getLang } from "@/lib/i18n-server";
 import { dict } from "@/lib/i18n";
-
-const nav = [
-  { href: "/bookings", key: "nav_bookings" },
-  { href: "/sessions", key: "nav_session_list" },
-  { href: "/students", key: "nav_students" },
-  { href: "/revenue", key: "nav_revenue" },
-  { href: "/settings", key: "nav_settings" },
-] as const;
 
 export default async function AppLayout({
   children,
@@ -19,14 +10,6 @@ export default async function AppLayout({
 }) {
   const lang = await getLang();
   const d = dict[lang];
-
-  const mobileLabels = {
-    "/bookings": d.nav_bookings,
-    "/sessions": d.nav_session_list,
-    "/students": d.nav_students,
-    "/revenue": d.nav_revenue,
-    "/settings": d.nav_settings,
-  } as const;
 
   return (
     <div className="min-h-dvh text-slate-900">
@@ -42,7 +25,7 @@ export default async function AppLayout({
               </div>
             </div>
 
-            <div className="hidden sm:block">
+            <div>
               <TopModuleNav
                 items={[
                   {
@@ -78,12 +61,10 @@ export default async function AppLayout({
 
         <ToastBar />
 
-        <main className="px-4 py-5 sm:px-6 sm:py-8 pb-[calc(6rem+env(safe-area-inset-bottom))]">
+        <main className="px-4 py-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] sm:px-6 sm:py-8">
           {children}
         </main>
       </div>
-
-      <MobileTabBar labels={mobileLabels} />
     </div>
   );
 }

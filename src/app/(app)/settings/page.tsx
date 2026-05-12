@@ -4,6 +4,7 @@ import { requireUser } from "@/lib/supabase/guards";
 import { getLang } from "@/lib/i18n-server";
 import { dict } from "@/lib/i18n";
 import { LangToggle } from "@/components/LangToggle";
+import { PageModuleTitle } from "@/components/PageModuleTitle";
 import { InfoTip } from "@/components/InfoTip";
 import { parseSgdInput } from "@/lib/money";
 import { toastUrl } from "@/lib/toast";
@@ -105,7 +106,7 @@ export default async function SettingsPage() {
     <div className="max-w-4xl space-y-10">
       <div>
         <div className="flex flex-wrap items-center gap-2">
-          <h1 className="text-lg font-semibold tracking-tight">{d.nav_settings}</h1>
+          <PageModuleTitle module="/settings">{d.nav_settings}</PageModuleTitle>
           <InfoTip text={`${d.currencyHint} · ${d.pricePerPerson}`} />
         </div>
       </div>
