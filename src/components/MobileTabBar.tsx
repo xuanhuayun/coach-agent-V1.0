@@ -5,37 +5,57 @@ import { useLinkStatus } from "next/link";
 import { usePathname } from "next/navigation";
 
 const tabs = [
-  { href: "/bookings", match: (p: string) => p.startsWith("/bookings") },
-  { href: "/sessions", match: (p: string) => p.startsWith("/sessions") },
-  { href: "/students", match: (p: string) => p.startsWith("/students") },
-  { href: "/revenue", match: (p: string) => p.startsWith("/revenue") },
-  { href: "/settings", match: (p: string) => p.startsWith("/settings") },
+  {
+    href: "/bookings",
+    icon: "/icons/tab-bookings.png",
+    match: (p: string) => p.startsWith("/bookings"),
+  },
+  {
+    href: "/sessions",
+    icon: "/icons/tab-sessions.png",
+    match: (p: string) => p.startsWith("/sessions"),
+  },
+  {
+    href: "/students",
+    icon: "/icons/tab-students.png",
+    match: (p: string) => p.startsWith("/students"),
+  },
+  {
+    href: "/revenue",
+    icon: "/icons/tab-revenue.png",
+    match: (p: string) => p.startsWith("/revenue"),
+  },
+  {
+    href: "/settings",
+    icon: "/icons/tab-settings.png",
+    match: (p: string) => p.startsWith("/settings"),
+  },
 ] as const;
 
 function MobileTabLinkContent({
   label,
-  href,
+  icon,
 }: {
   label: string;
-  href: (typeof tabs)[number]["href"];
+  icon: (typeof tabs)[number]["icon"];
 }) {
   const { pending } = useLinkStatus();
 
   return (
-    <>
-      <span className="text-sm leading-none" aria-hidden>
-        {href === "/bookings"
-          ? "🗓️"
-          : href === "/sessions"
-            ? "📚"
-            : href === "/students"
-              ? "👥"
-              : href === "/revenue"
-                ? "📊"
-                : "⚙️"}
+    <span className="flex min-w-0 items-center justify-center gap-1">
+      <img
+        src={icon}
+        alt=""
+        width={20}
+        height={20}
+        decoding="async"
+        className="h-5 w-5 shrink-0 object-contain"
+        aria-hidden
+      />
+      <span className="line-clamp-2 text-center leading-tight">
+        {pending ? "请稍等…" : label}
       </span>
-      <span className="mt-0.5 line-clamp-2 text-center">{pending ? "请稍等…" : label}</span>
-    </>
+    </span>
   );
 }
 
@@ -60,13 +80,13 @@ export function MobileTabBar({
               key={tab.href}
               href={tab.href}
               prefetch
-              className={`relative flex min-h-14 min-w-0 flex-1 touch-manipulation flex-col items-center justify-center rounded-2xl px-2 py-2 text-xs font-semibold leading-tight transition-colors ${
+              className={`relative flex min-h-14 min-w-0 flex-1 touch-manipulation items-center justify-center rounded-2xl px-1.5 py-2 text-[11px] font-semibold leading-tight transition-colors ${
                 active
                   ? "bg-sky-100/90 text-sky-950 shadow-inner shadow-sky-200/50"
                   : "text-slate-600 active:bg-sky-50/80"
               }`}
             >
-              <MobileTabLinkContent label={label} href={tab.href} />
+              <MobileTabLinkContent label={label} icon={tab.icon} />
             </Link>
           );
         })}
