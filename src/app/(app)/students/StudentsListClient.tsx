@@ -1,23 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { Lang } from "@/lib/i18n";
+import type { StudentListRowPayload } from "@/lib/students-list-page";
 import { InfoTip } from "@/components/InfoTip";
 
-export type StudentListRow = {
-  id: string;
-  name: string;
-  phone: string | null;
-  notes: string | null;
-  sessionCount: number;
-  lastSessionDate: string | null;
-  past10: boolean;
-  past20: boolean;
-  future10: boolean;
-  future20: boolean;
-  isDormant: boolean;
-};
+export type StudentListRow = StudentListRowPayload;
 
 type Copy = Record<string, string>;
 
@@ -39,15 +28,83 @@ function Dot({ on, title }: { on: boolean; title: string }) {
 }
 
 export function StudentsListClient({
-  students,
+  initialStudents,
+  initialHasMore,
+  pageSize,
   lang,
   copy,
 }: {
-  students: StudentListRow[];
+  initialStudents: StudentListRow[];
+  initialHasMore: boolean;
+  pageSize: number;
   lang: Lang;
   copy: Copy;
 }) {
+  const [students, setStudents] = useState(initialStudents);
+  const [hasMore, setHasMore] = useState(initialHasMore);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [q, setQ] = useState("");
+  const loadMoreRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    setStudents(initialStudents);
+    setHasMore(initialHasMore);
+    setLoadError(null);
+  }, [initialHasMore, initialStudents]);
+
+  useEffect(() => {
+    if (!hasMore || loadingMore || q.trim()) return;
+    const node = loadMoreRef.current;
+    if (!node) return;
+
+    let cancelled = false;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (!entries.some((entry) => entry.isIntersecting) || cancelled) return;
+        void (async () => {
+          setLoadingMore(true);
+          setLoadError(null);
+          try {
+            const res = await fetch(
+              `/api/students/page?offset=${students.length}&limit=${pageSize}`,
+            );
+            const json = (await res.json()) as {
+              students?: StudentListRow[];
+              hasMore?: boolean;
+              error?: string;
+            };
+            if (!res.ok) {
+              throw new Error(json.error ?? "load_failed");
+            }
+            const next = json.students ?? [];
+            setStudents((current) => {
+              const seen = new Set(current.map((row) => row.id));
+              const merged = [...current];
+              for (const row of next) {
+                if (seen.has(row.id)) continue;
+                seen.add(row.id);
+                merged.push(row);
+              }
+              return merged;
+            });
+            setHasMore(Boolean(json.hasMore));
+          } catch {
+            setLoadError(lang === "zh" ? "加载更多失败。" : "Failed to load more.");
+          } finally {
+            setLoadingMore(false);
+          }
+        })();
+      },
+      { rootMargin: "160px" },
+    );
+
+    observer.observe(node);
+    return () => {
+      cancelled = true;
+      observer.disconnect();
+    };
+  }, [hasMore, lang, loadingMore, pageSize, q, students.length]);
 
   const t =
     lang === "zh"
@@ -226,8 +283,21 @@ export function StudentsListClient({
                 </div>
               </Link>
             ))}
+          
           </div>
         )}
+        {!q.trim() && hasMore ? (
+          <div ref={loadMoreRef} className="px-4 py-4 text-center text-sm text-slate-500">
+            {loadingMore
+              ? lang === "zh"
+                ? "加载更多…"
+                : "Loading more…"
+              : lang === "zh"
+                ? "继续下滑加载更多"
+                : "Scroll for more"}
+          </div>
+        ) : null}
+        {loadError ? <div className="px-4 py-3 text-sm text-red-700">{loadError}</div> : null}
       </div>
     </div>
   );

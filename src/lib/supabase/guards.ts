@@ -2,6 +2,7 @@ import "server-only";
 
 import type { User } from "@supabase/supabase-js";
 import { redirect } from "next/navigation";
+import { cache } from "react";
 import { isDevAuthBypass } from "@/lib/dev-auth";
 import {
   createSupabaseAdminForDev,
@@ -9,7 +10,7 @@ import {
   isSupabaseConfigured,
 } from "@/lib/supabase/server";
 
-export async function requireUser() {
+export const requireUser = cache(async function requireUser() {
   if (!isSupabaseConfigured()) {
     redirect("/login");
   }
@@ -33,5 +34,5 @@ export async function requireUser() {
   if (!user) redirect("/login");
 
   return { supabase, user };
-}
+});
 

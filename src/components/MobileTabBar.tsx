@@ -31,6 +31,7 @@ export function MobileTabBar({
             <Link
               key={tab.href}
               href={tab.href}
+              prefetch
               className={`flex min-h-14 min-w-0 flex-1 touch-manipulation flex-col items-center justify-center rounded-2xl px-2 py-2 text-xs font-semibold leading-tight transition-colors ${
                 active
                   ? "bg-sky-100/90 text-sky-950 shadow-inner shadow-sky-200/50"
