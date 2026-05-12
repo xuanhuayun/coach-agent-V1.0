@@ -27,6 +27,17 @@ export function sessionHistoryMonthLabel(key: string, lang: Lang): string {
   return format(parseISO(`${key}-01`), "MMMM yyyy", { locale: enUS });
 }
 
+export function createSessionHistoryMonthPlaceholder(
+  monthKey: string,
+  lang: Lang,
+): SessionHistoryMonthPayload {
+  return {
+    key: monthKey,
+    label: sessionHistoryMonthLabel(monthKey, lang),
+    sessions: [],
+  };
+}
+
 export function sessionHistoryMonthBounds(monthKey: string, todayYmd = singaporeTodayYmd()) {
   const fromStr = `${monthKey}-01`;
   const monthEnd = format(endOfMonth(parseISO(fromStr)), "yyyy-MM-dd");

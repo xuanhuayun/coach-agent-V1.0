@@ -5,7 +5,6 @@ import { getLang } from "@/lib/i18n-server";
 import { dict } from "@/lib/i18n";
 import { LangToggle } from "@/components/LangToggle";
 import { PageModuleTitle } from "@/components/PageModuleTitle";
-import { InfoTip } from "@/components/InfoTip";
 import { parseSgdInput } from "@/lib/money";
 import { toastUrl } from "@/lib/toast";
 import { lessonModeDefinitionByCode, sortLessonModes } from "@/lib/lesson-mode";
@@ -104,12 +103,7 @@ export default async function SettingsPage() {
 
   return (
     <div className="max-w-4xl space-y-10">
-      <div>
-        <div className="flex flex-wrap items-center gap-2">
-          <PageModuleTitle module="/settings">{d.nav_settings}</PageModuleTitle>
-          <InfoTip text={`${d.currencyHint} · ${d.pricePerPerson}`} />
-        </div>
-      </div>
+      <PageModuleTitle module="/settings">{d.nav_settings}</PageModuleTitle>
 
       <SettingsActionsClient
         lang={lang}
@@ -122,17 +116,7 @@ export default async function SettingsPage() {
 
       <section className="rounded-2xl border border-slate-200 bg-white p-6">
         <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <h2 className="text-sm font-semibold text-slate-900">{d.language}</h2>
-            <InfoTip
-              side="top"
-              text={
-                lang === "zh"
-                  ? "切换一次就会记住（保存在浏览器里），不用每次都调。"
-                  : "Saved in a browser cookie."
-              }
-            />
-          </div>
+          <h2 className="text-sm font-semibold text-slate-900">{d.language}</h2>
           <LangToggle value={lang} />
         </div>
       </section>

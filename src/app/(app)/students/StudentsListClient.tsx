@@ -282,7 +282,7 @@ export function StudentsListClient({
                       title={s.future20 ? "next20 ✓" : "next20 ✗"}
                     />
                   </div>
-                  <span className="text-xs text-sky-700">{lang === "zh" ? "详情 →" : "→"}</span>
+                  <span className="text-xs text-sky-700">{lang === "zh" ? "详情" : "Details"}</span>
                 </div>
               </Link>
             ))}

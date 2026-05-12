@@ -1,3 +1,9 @@
+import {
+  BOOKING_REPEAT_DEFAULT_COUNT,
+  BOOKING_REPEAT_MAX_COUNT,
+  type BookingRepeatType,
+} from "@/lib/booking-recurrence";
+
 export const BOOKING_DRAFT_KEY = "coach_agent_booking_draft";
 
 export type BookingDraft = {
@@ -6,6 +12,8 @@ export type BookingDraft = {
   remarks: string;
   query: string;
   studentIds: string[];
+  repeatType: BookingRepeatType;
+  repeatCount: number;
   pickerOpen: boolean;
   pickerChosen: boolean;
   pickerDate: string;
@@ -21,6 +29,8 @@ export function createEmptyBookingDraft(): BookingDraft {
     remarks: "",
     query: "",
     studentIds: [],
+    repeatType: "none",
+    repeatCount: BOOKING_REPEAT_DEFAULT_COUNT,
     pickerOpen: false,
     pickerChosen: false,
     pickerDate: "",
@@ -36,6 +46,10 @@ function isMinute(v: unknown): v is BookingDraft["pickerMinute"] {
 
 function isDuration(v: unknown): v is BookingDraft["pickerDuration"] {
   return v === "1" || v === "2";
+}
+
+function isRepeatType(v: unknown): v is BookingRepeatType {
+  return v === "none" || v === "weekly" || v === "biweekly" || v === "monthly";
 }
 
 export function readBookingDraft(): BookingDraft | null {
@@ -54,6 +68,11 @@ export function readBookingDraft(): BookingDraft | null {
       remarks: typeof parsed.remarks === "string" ? parsed.remarks : empty.remarks,
       query: typeof parsed.query === "string" ? parsed.query : empty.query,
       studentIds,
+      repeatType: isRepeatType(parsed.repeatType) ? parsed.repeatType : empty.repeatType,
+      repeatCount:
+        typeof parsed.repeatCount === "number" && Number.isFinite(parsed.repeatCount)
+          ? Math.min(BOOKING_REPEAT_MAX_COUNT, Math.max(1, Math.trunc(parsed.repeatCount)))
+          : empty.repeatCount,
       pickerOpen: Boolean(parsed.pickerOpen),
       pickerChosen: Boolean(parsed.pickerChosen),
       pickerDate: typeof parsed.pickerDate === "string" ? parsed.pickerDate : empty.pickerDate,

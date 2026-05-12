@@ -2,6 +2,11 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import {
+  buildRecurringBookingStarts,
+  parseBookingRepeatCount,
+  parseBookingRepeatType,
+} from "@/lib/booking-recurrence";
 import { isFutureBookingStart } from "@/lib/booking-time";
 import { requireUser } from "@/lib/supabase/guards";
 import { toastUrl } from "@/lib/toast";
@@ -11,6 +16,120 @@ function ymdInSingaporeFromIso(iso: string): string | null {
   if (Number.isNaN(d.getTime())) return null;
   // YYYY-MM-DD in Asia/Singapore
   return d.toLocaleDateString("en-CA", { timeZone: "Asia/Singapore" });
+}
+
+async function countBookingConflicts(
+  supabase: Awaited<ReturnType<typeof requireUser>>["supabase"],
+  userId: string,
+  bookingIso: string,
+  nextBookingDurationHours: number,
+) {
+  const start = new Date(bookingIso);
+  const durH =
+    Number.isFinite(nextBookingDurationHours) && nextBookingDurationHours > 0
+      ? nextBookingDurationHours
+      : 2;
+  const end = new Date(start.getTime() + durH * 3600_000);
+  const windowStartIso = new Date(start.getTime() - 24 * 3600_000).toISOString();
+  const windowEndIso = new Date(end.getTime() + 24 * 3600_000).toISOString();
+
+  let candidates: Array<{ id?: string; next_booking_at?: string; next_booking_duration_hours?: number | null }> =
+    [];
+  const q1 = await supabase
+    .from("sessions")
+    .select("id,next_booking_at,next_booking_duration_hours")
+    .eq("user_id", userId)
+    .not("next_booking_at", "is", null)
+    .gte("next_booking_at", windowStartIso)
+    .lt("next_booking_at", windowEndIso);
+  if (!q1.error) {
+    candidates = q1.data ?? [];
+  } else {
+    const q2 = await supabase
+      .from("sessions")
+      .select("id,next_booking_at")
+      .eq("user_id", userId)
+      .not("next_booking_at", "is", null)
+      .gte("next_booking_at", windowStartIso)
+      .lt("next_booking_at", windowEndIso);
+    candidates = q2.data ?? [];
+  }
+
+  return (candidates ?? []).filter((row) => {
+    const slotStart = new Date(String(row.next_booking_at));
+    if (Number.isNaN(slotStart.getTime())) return false;
+    const hours = Number(row.next_booking_duration_hours ?? 2) || 2;
+    const slotEnd = new Date(slotStart.getTime() + hours * 3600_000);
+    return slotStart < end && start < slotEnd;
+  }).length;
+}
+
+async function insertBookedSession(
+  supabase: Awaited<ReturnType<typeof requireUser>>["supabase"],
+  userId: string,
+  input: {
+    sessionDate: string;
+    venueId: string;
+    modeId: string;
+    remarks: string;
+    bookingIso: string;
+    nextBookingDurationHours: number;
+    studentIds: string[];
+  },
+) {
+  const { data: created, error } = await supabase
+    .from("sessions")
+    .insert({
+      user_id: userId,
+      session_date: input.sessionDate,
+      venue_id: input.venueId || null,
+      lesson_mode_id: input.modeId || null,
+      content: null,
+      improvements: null,
+      remarks: input.remarks || null,
+      next_booking_at: input.bookingIso,
+      next_booking_duration_hours: input.nextBookingDurationHours,
+    })
+    .select("id")
+    .single();
+
+  if ((error as { code?: string; message?: string } | null)?.code === "PGRST204" &&
+    String((error as { message?: string } | null)?.message ?? "").includes("next_booking_duration_hours")) {
+    const retry = await supabase
+      .from("sessions")
+      .insert({
+        user_id: userId,
+        session_date: input.sessionDate,
+        venue_id: input.venueId || null,
+        lesson_mode_id: input.modeId || null,
+        content: null,
+        improvements: null,
+        remarks: input.remarks || null,
+        next_booking_at: input.bookingIso,
+      })
+      .select("id")
+      .single();
+    if (retry.error || !retry.data?.id) {
+      return { ok: false as const, error: retry.error ?? error };
+    }
+    const rows = input.studentIds.map((studentId) => ({
+      session_id: retry.data.id,
+      student_id: studentId,
+    }));
+    const linkErr = await supabase.from("session_students").insert(rows);
+    return linkErr.error ? { ok: false as const, error: linkErr.error } : { ok: true as const };
+  }
+
+  if (error || !created?.id) {
+    return { ok: false as const, error };
+  }
+
+  const rows = input.studentIds.map((studentId) => ({
+    session_id: created.id,
+    student_id: studentId,
+  }));
+  const linkErr = await supabase.from("session_students").insert(rows);
+  return linkErr.error ? { ok: false as const, error: linkErr.error } : { ok: true as const };
 }
 
 export async function updateBooking(formData: FormData) {
@@ -197,54 +316,32 @@ export async function createBooking(formData: FormData) {
   }
 
   const bookingIso = new Date(nextBookingAt).toISOString();
-  const sessionDate = ymdInSingaporeFromIso(bookingIso);
-  if (!sessionDate) {
+  if (!ymdInSingaporeFromIso(bookingIso)) {
     redirect(toastUrl("/bookings", "error", "约课时间格式不正确。"));
   }
   if (!isFutureBookingStart(nextBookingAt)) {
     redirect(toastUrl("/bookings", "error", "约课时间必须是未来时间。"));
   }
 
-  // Server-side conflict check (authoritative): no overlaps allowed for this coach.
-  {
-    const start = new Date(bookingIso);
-    const durH = Number.isFinite(nextBookingDurationHours) && nextBookingDurationHours > 0 ? nextBookingDurationHours : 2;
-    const end = new Date(start.getTime() + durH * 3600_000);
-    const windowStartIso = new Date(start.getTime() - 24 * 3600_000).toISOString();
-    const windowEndIso = new Date(end.getTime() + 24 * 3600_000).toISOString();
+  const repeatType = parseBookingRepeatType(String(formData.get("bookingRepeatType") ?? ""));
+  const repeatCount = parseBookingRepeatCount(String(formData.get("bookingRepeatCount") ?? ""), repeatType);
+  const occurrences = buildRecurringBookingStarts(bookingIso, repeatType, repeatCount);
 
-    let candidates: any[] = [];
-    const q1 = await supabase
-      .from("sessions")
-      .select("id,next_booking_at,next_booking_duration_hours")
-      .eq("user_id", user.id)
-      .not("next_booking_at", "is", null)
-      .gte("next_booking_at", windowStartIso)
-      .lt("next_booking_at", windowEndIso);
-    if (!q1.error) {
-      candidates = q1.data ?? [];
-    } else {
-      // Backward-compatible: if duration column doesn't exist yet.
-      const q2 = await supabase
-        .from("sessions")
-        .select("id,next_booking_at")
-        .eq("user_id", user.id)
-        .not("next_booking_at", "is", null)
-        .gte("next_booking_at", windowStartIso)
-        .lt("next_booking_at", windowEndIso);
-      candidates = q2.data ?? [];
-    }
-
-    const conflicts = (candidates ?? []).filter((r: any) => {
-      const s = new Date(String(r.next_booking_at));
-      if (Number.isNaN(s.getTime())) return false;
-      const h = Number(r.next_booking_duration_hours ?? 2) || 2;
-      const e = new Date(s.getTime() + h * 3600_000);
-      return s < end && start < e;
-    });
-
-    if (conflicts.length > 0) {
-      redirect(toastUrl("/bookings", "error", `约课时间冲突：该时间段已有 ${conflicts.length} 条约课。`));
+  for (const occurrenceIso of occurrences) {
+    const conflicts = await countBookingConflicts(
+      supabase,
+      user.id,
+      occurrenceIso,
+      nextBookingDurationHours,
+    );
+    if (conflicts > 0) {
+      redirect(
+        toastUrl(
+          "/bookings",
+          "error",
+          `约课时间冲突：${new Date(occurrenceIso).toLocaleString("zh-CN", { timeZone: "Asia/Singapore" })} 已有 ${conflicts} 条约课。`,
+        ),
+      );
     }
   }
 
@@ -256,98 +353,60 @@ export async function createBooking(formData: FormData) {
       .in("id", overrideIds);
   }
 
-  const { data: created, error } = await supabase
-    .from("sessions")
-    .insert({
-      user_id: user.id,
-      session_date: sessionDate,
-      venue_id: venueId || null,
-      lesson_mode_id: modeId || null,
-      content: null,
-      improvements: null,
-      remarks: remarks || null,
-      next_booking_at: bookingIso,
-      next_booking_duration_hours: nextBookingDurationHours,
-    })
-    .select("id")
-    .single();
+  let createdCount = 0;
+  for (const occurrenceIso of occurrences) {
+    const sessionDate = ymdInSingaporeFromIso(occurrenceIso);
+    if (!sessionDate) {
+      redirect(toastUrl("/bookings", "error", "约课时间格式不正确。"));
+    }
 
-  if ((error as any)?.code === "PGRST204" && String((error as any)?.message ?? "").includes("next_booking_duration_hours")) {
-    const retry = await supabase
-      .from("sessions")
-      .insert({
-        user_id: user.id,
-        session_date: sessionDate,
-        venue_id: venueId || null,
-        lesson_mode_id: modeId || null,
-        content: null,
-        improvements: null,
-        remarks: remarks || null,
-        next_booking_at: bookingIso,
-      })
-      .select("id")
-      .single();
-    if (!retry.error && retry.data?.id) {
-      const rows = studentIds.map((sid) => ({ session_id: retry.data.id, student_id: sid }));
-      const { error: linkErr } = await supabase.from("session_students").insert(rows);
-      if (linkErr) {
-        const msg = String((linkErr as any)?.message ?? "");
-        const code = String((linkErr as any)?.code ?? "");
+    const inserted = await insertBookedSession(supabase, user.id, {
+      sessionDate,
+      venueId,
+      modeId,
+      remarks,
+      bookingIso: occurrenceIso,
+      nextBookingDurationHours,
+      studentIds,
+    });
+
+    if (!inserted.ok) {
+      const msg = String((inserted.error as { message?: string } | null)?.message ?? "");
+      const code = String((inserted.error as { code?: string } | null)?.code ?? "");
+      if (
+        msg.toLowerCase().includes("paid") ||
+        msg.toLowerCase().includes("improvements") ||
+        msg.toLowerCase().includes("column")
+      ) {
         redirect(
           toastUrl(
             "/bookings",
             "error",
-            `保存失败：学员关联写入失败。${code ? ` [${code}]` : ""} ${msg || ""}`.trim(),
+            "保存失败：数据库还没更新（字段缺失）。请先执行迁移 `20260510_add_session_student_improvements.sql`（以及如需要的话 `20260510_add_session_student_paid.sql`）。",
           ),
         );
       }
-      redirect(toastUrl("/bookings", "success", "保存成功，可继续为其他时间约课。"));
-    }
-  }
-
-  if (error || !created?.id) {
-    const msg = String((error as any)?.message ?? "");
-    const code = String((error as any)?.code ?? "");
-    redirect(
-      toastUrl(
-        "/bookings",
-        "error",
-        `保存失败：${code ? `[${code}] ` : ""}${msg || "请稍后再试。"}`,
-      ),
-    );
-  }
-
-  // Insert the minimal columns for maximum DB compatibility.
-  const rows = studentIds.map((sid) => ({ session_id: created.id, student_id: sid }));
-
-  const { error: linkErr } = await supabase.from("session_students").insert(rows);
-  if (linkErr) {
-    // best-effort cleanup is skipped to avoid lock trigger surprises; toast is enough.
-    const msg = String((linkErr as any)?.message ?? "");
-    if (
-      msg.toLowerCase().includes("paid") ||
-      msg.toLowerCase().includes("improvements") ||
-      msg.toLowerCase().includes("column")
-    ) {
       redirect(
         toastUrl(
           "/bookings",
           "error",
-          "保存失败：数据库还没更新（字段缺失）。请先执行迁移 `20260510_add_session_student_improvements.sql`（以及如需要的话 `20260510_add_session_student_paid.sql`）。",
+          `保存失败：${code ? `[${code}] ` : ""}${msg || "请稍后再试。"}`,
         ),
       );
     }
-    const code = String((linkErr as any)?.code ?? "");
-    redirect(
-      toastUrl(
-        "/bookings",
-        "error",
-        `保存失败：学员关联写入失败。${code ? ` [${code}]` : ""} ${msg || ""}`.trim(),
-      ),
-    );
+
+    createdCount += 1;
   }
 
-  redirect(toastUrl("/bookings", "success", "保存成功，可继续为其他时间约课。"));
+  redirect(
+    toastUrl(
+      "/bookings",
+      "success",
+      createdCount > 1
+        ? `已成功创建 ${createdCount} 条约课。`
+        : "保存成功，可继续为其他时间约课。",
+    ),
+  );
 }
 
 export async function toggleBookingPaid(formData: FormData) {

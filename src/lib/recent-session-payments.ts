@@ -82,7 +82,10 @@ async function buildPaymentRows(
   });
 
   const paidMap = await readSessionStudentPaidMap(supabase, userId);
-  const rows = applyPaidMapToRows(mapRecentPaymentRows(combined, lang), paidMap);
+  const rows = applyPaidMapToRows(
+    mapRecentPaymentRows(combined, lang, { loggedOnly: true }),
+    paidMap,
+  );
   if (!options?.unpaidOnly) return rows;
   return rows.filter((row) => !row.paid);
 }

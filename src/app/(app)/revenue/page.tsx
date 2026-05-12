@@ -12,7 +12,6 @@ import {
   querySessionDurationIds,
   querySessionsOnDate,
 } from "@/lib/session-queries";
-import { InfoTip } from "@/components/InfoTip";
 import { PageModuleTitle } from "@/components/PageModuleTitle";
 import {
   parseFinancePreset,
@@ -227,18 +226,7 @@ export default async function RevenuePage({
 
   return (
     <div className="max-w-4xl space-y-6">
-      <div>
-        <div className="flex flex-wrap items-center gap-2">
-          <PageModuleTitle module="/revenue">{d.nav_revenue}</PageModuleTitle>
-          <InfoTip
-            text={
-              lang === "zh"
-                ? "收入 = 单价（S$/人/节）× 实际到课人数；课时按每节课时长汇总（默认 2 小时）。统计以新加坡时区「今天 / 本月」为准。"
-                : "Revenue = per-person rate × attendance; hours sum session lengths (default 2h). “Today / this month” use Asia/Singapore."
-            }
-          />
-        </div>
-      </div>
+      <PageModuleTitle module="/revenue">{d.nav_revenue}</PageModuleTitle>
 
       <section className="rounded-2xl border border-sky-100 bg-gradient-to-br from-sky-50/80 via-white to-sky-50/40 p-5 shadow-sm shadow-sky-100/40">
         <div className={financeTitleClass}>{d.finance_today_title}</div>
@@ -340,20 +328,14 @@ export default async function RevenuePage({
       </div>
 
       <section className="rounded-2xl border border-slate-200 bg-white p-6">
-        <div className="flex items-center gap-2">
-          <h2 className="text-sm font-semibold text-slate-900">{d.finance_monthly_trend}</h2>
-          <InfoTip text={d.finance_monthly_trend_hint} />
-        </div>
+        <h2 className="text-sm font-semibold text-slate-900">{d.finance_monthly_trend}</h2>
         <div className="mt-4">
           <RevenueTrendChart lang={lang} data={chartData} />
         </div>
       </section>
 
       <section className="rounded-2xl border border-slate-200 bg-white p-6">
-        <div className="flex items-center gap-2">
-          <h2 className="text-sm font-semibold text-slate-900">{d.finance_top_students}</h2>
-          <InfoTip text={d.finance_top_sub} />
-        </div>
+        <h2 className="text-sm font-semibold text-slate-900">{d.finance_top_students}</h2>
         {topRows.length === 0 ? (
           <p className="mt-4 text-sm text-slate-600/90">{d.finance_no_students_month}</p>
         ) : (

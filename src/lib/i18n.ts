@@ -6,8 +6,8 @@ export const dict = {
   zh: {
     appName: "Coach Xing's Agent",
     appSubtitle: "邢教练的工作台",
-    nav_sessions: "课程记录",
-    nav_session_list: "课程记录",
+    nav_sessions: "记录",
+    nav_session_list: "记录",
     nav_session_tab: "记录",
     nav_students: "学员",
     nav_bookings: "约课",

@@ -4,56 +4,62 @@ import { addMonths, format, parseISO } from "date-fns";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { SessionHistoryListRow } from "@/components/SessionHistoryListRow";
 import type { Lang } from "@/lib/i18n";
-import type { SessionHistoryMonthPayload } from "@/lib/session-history-month";
+import {
+  createSessionHistoryMonthPlaceholder,
+  type SessionHistoryMonthPayload,
+} from "@/lib/session-history-month";
 
 function shiftMonthKey(key: string, delta: number) {
   return format(addMonths(parseISO(`${key}-01`), delta), "yyyy-MM");
 }
 
-function clampIndex(index: number, length: number) {
-  if (length <= 0) return 0;
-  return Math.max(0, Math.min(index, length - 1));
-}
-
 export function SessionHistoryByMonth({
   lang,
-  initialMonth,
+  initialMonthKey,
   currentMonthKey,
   rangeLabel,
   emptyMonthText,
   detailLabel,
 }: {
   lang: Lang;
-  initialMonth: SessionHistoryMonthPayload;
+  initialMonthKey: string;
   currentMonthKey: string;
   rangeLabel: string;
   emptyMonthText: string;
   detailLabel: string;
 }) {
   const [monthsByKey, setMonthsByKey] = useState<Record<string, SessionHistoryMonthPayload>>(() => ({
-    [initialMonth.key]: initialMonth,
+    [initialMonthKey]: createSessionHistoryMonthPlaceholder(initialMonthKey, lang),
   }));
-  const [monthKeys, setMonthKeys] = useState<string[]>(() => [initialMonth.key]);
+  const [monthKeys, setMonthKeys] = useState<string[]>(() => [initialMonthKey]);
   const [index, setIndex] = useState(0);
+  const [loadedKeys, setLoadedKeys] = useState<Set<string>>(() => new Set());
   const [loadingKey, setLoadingKey] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const touchStartX = useRef<number | null>(null);
 
   useEffect(() => {
-    setMonthsByKey({ [initialMonth.key]: initialMonth });
-    setMonthKeys([initialMonth.key]);
+    setMonthsByKey({
+      [initialMonthKey]: createSessionHistoryMonthPlaceholder(initialMonthKey, lang),
+    });
+    setMonthKeys([initialMonthKey]);
     setIndex(0);
+    setLoadedKeys(new Set());
     setLoadError(null);
-  }, [initialMonth]);
+  }, [initialMonthKey, lang]);
 
-  const activeKey = monthKeys[index] ?? initialMonth.key;
-  const active = monthsByKey[activeKey] ?? initialMonth;
+  const activeKey = monthKeys[index] ?? initialMonthKey;
+  const active = monthsByKey[activeKey] ?? createSessionHistoryMonthPlaceholder(activeKey, lang);
+  const activeLoaded = loadedKeys.has(activeKey);
 
-  const canPrev = index > 0 || !loadingKey;
+  const canPrev = index > 0 || activeKey > shiftMonthKey(currentMonthKey, -120);
   const canNext = index < monthKeys.length - 1 || activeKey < currentMonthKey;
 
   const loadMonth = useCallback(async (key: string) => {
-    if (monthsByKey[key]) return monthsByKey[key];
+    if (loadedKeys.has(key)) {
+      return monthsByKey[key] ?? createSessionHistoryMonthPlaceholder(key, lang);
+    }
+
     setLoadingKey(key);
     setLoadError(null);
     try {
@@ -63,6 +69,7 @@ export function SessionHistoryByMonth({
         throw new Error(json.error ?? "load_failed");
       }
       setMonthsByKey((current) => ({ ...current, [key]: json }));
+      setLoadedKeys((current) => new Set(current).add(key));
       return json;
     } catch {
       setLoadError(lang === "zh" ? "加载失败，请稍后再试。" : "Failed to load. Try again.");
@@ -70,52 +77,58 @@ export function SessionHistoryByMonth({
     } finally {
       setLoadingKey((current) => (current === key ? null : current));
     }
-  }, [lang, monthsByKey]);
+  }, [lang, loadedKeys, monthsByKey]);
+
+  useEffect(() => {
+    void loadMonth(initialMonthKey);
+  }, [initialMonthKey, loadMonth]);
 
   const goPrev = useCallback(async () => {
     if (index > 0) {
+      const targetKey = monthKeys[index - 1] ?? initialMonthKey;
+      if (!loadedKeys.has(targetKey)) {
+        const loaded = await loadMonth(targetKey);
+        if (!loaded) return;
+      }
       setIndex((current) => current - 1);
       return;
     }
-    const olderKey = shiftMonthKey(monthKeys[0] ?? initialMonth.key, -1);
-    if (monthsByKey[olderKey]) {
-      setMonthKeys((keys) => [olderKey, ...keys]);
-      setIndex(0);
-      return;
-    }
+
+    const olderKey = shiftMonthKey(monthKeys[0] ?? initialMonthKey, -1);
     const loaded = await loadMonth(olderKey);
     if (!loaded) return;
     setMonthKeys((keys) => [olderKey, ...keys]);
     setIndex(0);
-  }, [index, initialMonth.key, loadMonth, monthKeys, monthsByKey]);
+  }, [index, initialMonthKey, loadMonth, loadedKeys, monthKeys]);
 
   const goNext = useCallback(async () => {
     if (index < monthKeys.length - 1) {
+      const targetKey = monthKeys[index + 1] ?? initialMonthKey;
+      if (!loadedKeys.has(targetKey)) {
+        const loaded = await loadMonth(targetKey);
+        if (!loaded) return;
+      }
       setIndex((current) => current + 1);
       return;
     }
-    const newestKey = monthKeys[monthKeys.length - 1] ?? initialMonth.key;
+
+    const newestKey = monthKeys[monthKeys.length - 1] ?? initialMonthKey;
     if (newestKey >= currentMonthKey) return;
     const newerKey = shiftMonthKey(newestKey, 1);
-    if (monthsByKey[newerKey]) {
-      setMonthKeys((keys) => [...keys, newerKey]);
-      setIndex((current) => clampIndex(current + 1, monthKeys.length + 1));
-      return;
-    }
     const loaded = await loadMonth(newerKey);
     if (!loaded) return;
     setMonthKeys((keys) => [...keys, newerKey]);
     setIndex((current) => current + 1);
-  }, [currentMonthKey, index, initialMonth.key, loadMonth, monthKeys, monthsByKey]);
+  }, [currentMonthKey, index, initialMonthKey, loadMonth, loadedKeys, monthKeys]);
 
   const isLoadingActive = loadingKey === activeKey;
 
   const emptyText = useMemo(() => {
-    if (isLoadingActive) {
+    if (isLoadingActive || !activeLoaded) {
       return lang === "zh" ? "加载中…" : "Loading…";
     }
     return emptyMonthText;
-  }, [emptyMonthText, isLoadingActive, lang]);
+  }, [activeLoaded, emptyMonthText, isLoadingActive, lang]);
 
   return (
     <div className="space-y-3">
@@ -164,7 +177,7 @@ export function SessionHistoryByMonth({
           else void goPrev();
         }}
       >
-        {(active.sessions.length ?? 0) === 0 ? (
+        {!activeLoaded || (active.sessions.length ?? 0) === 0 ? (
           <div className="p-8 text-center text-sm text-slate-600/90">{emptyText}</div>
         ) : (
           <ul className="divide-y divide-slate-100">

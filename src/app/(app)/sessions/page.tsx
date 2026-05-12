@@ -23,14 +23,7 @@ export default async function SessionsPage({
 
   return (
     <div className="max-w-3xl space-y-8">
-      <div>
-        <PageModuleTitle module="/sessions">{d.nav_session_list}</PageModuleTitle>
-        <p className="mt-2 text-sm text-slate-600/90">
-          {lang === "zh"
-            ? "随手记一节课：今天教了什么、谁来上课了。记录完可以在「财务」模块查看收入。"
-            : "Log a class: what you taught and who attended. After saving, check revenue in Finance."}
-        </p>
-      </div>
+      <PageModuleTitle module="/sessions">{d.nav_session_list}</PageModuleTitle>
 
       <Suspense fallback={<SectionLoadingFallback rows={2} />}>
         <SessionsPendingSection />

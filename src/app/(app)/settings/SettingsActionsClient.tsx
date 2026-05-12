@@ -1,6 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
+import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { LESSON_MODE_CODES, LESSON_MODE_DEFINITIONS } from "@/lib/lesson-mode";
 
 type Venue = { id: string; name: string; address: string | null };
@@ -34,11 +35,9 @@ export function SettingsActionsClient({
           savePrice: "保存价格",
           confirmSave: "确认保存？",
           confirmDelete: "确认删除？",
-          confirmPriceChange: (code: string, from: string, to: string) =>
-            `确认更新 ${code} 的价格？\n\n` +
-            `从：S$${from || "（空）"}\n` +
-            `改为：S$${to || "（空）"}\n\n` +
-            `说明：已记录课程不会改价；之后新记录的课程才会按新单价计算。`,
+          confirmPriceChange: (label: string, from: string, to: string) =>
+            `确认把「${label}」的每人单价从 S$${from || "—"} 改为 S$${to || "—"}？\n\n` +
+            `已记课程、已有财务统计和已创建的约课都不会改价。保存后，新记的课程、新的收入统计，以及之后创建的约课才会按新单价计算。`,
         }
       : {
           venues: "Venues",
@@ -52,16 +51,21 @@ export function SettingsActionsClient({
           savePrice: "Save price",
           confirmSave: "Confirm save?",
           confirmDelete: "Confirm delete?",
-          confirmPriceChange: (code: string, from: string, to: string) =>
-            `Update price for ${code}?\n\n` +
-            `From: S$${from || "(blank)"} / person\n` +
-            `To:   S$${to || "(blank)"} / person\n\n` +
-            `Note: This won’t change prices on past sessions. Only newly logged sessions will use the new price.`,
+          confirmPriceChange: (label: string, from: string, to: string) =>
+            `Change ${label} from S$${from || "—"} to S$${to || "—"} per person?\n\n` +
+            `Past sessions, existing revenue totals, and bookings already created will not be updated. After you save, newly logged sessions, new revenue calculations, and bookings you create later will use this price.`,
         };
   }, [lang]);
 
   const [venueName, setVenueName] = useState("");
   const [venueAddr, setVenueAddr] = useState("");
+  const [priceConfirm, setPriceConfirm] = useState<{
+    code: string;
+    label: string;
+    from: string;
+    to: string;
+  } | null>(null);
+  const allowPriceSubmitRef = useRef<string | null>(null);
 
   const canAddVenue = venueName.trim().length > 0;
 
@@ -196,18 +200,25 @@ export function SettingsActionsClient({
             return (
               <form
                 key={code}
+                id={`mode-price-form-${code}`}
                 action={upsertLessonMode}
                 className="grid items-center gap-3 rounded-xl border border-slate-200 p-4 sm:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)_auto]"
                 onSubmit={(e) => {
-                  if (!dirty) {
+                  if (!isDirty(code)) {
                     e.preventDefault();
                     return;
                   }
-                  const from = modePriceByCode.get(code) ?? "";
-                  const to = draftPrice[code] ?? "";
-                  if (!window.confirm(t.confirmPriceChange(label, from, to))) {
+                  if (allowPriceSubmitRef.current !== code) {
                     e.preventDefault();
+                    setPriceConfirm({
+                      code,
+                      label,
+                      from: modePriceByCode.get(code) ?? "",
+                      to: draftPrice[code] ?? "",
+                    });
+                    return;
                   }
+                  allowPriceSubmitRef.current = null;
                 }}
               >
                 <input type="hidden" name="code" value={code} />
@@ -226,7 +237,15 @@ export function SettingsActionsClient({
                 </div>
                 {dirty ? (
                   <button
-                    type="submit"
+                    type="button"
+                    onClick={() =>
+                      setPriceConfirm({
+                        code,
+                        label,
+                        from: modePriceByCode.get(code) ?? "",
+                        to: draftPrice[code] ?? "",
+                      })
+                    }
                     className="rounded-xl bg-gradient-to-r from-sky-600 to-sky-700 px-3 py-1.5 text-xs font-medium text-white shadow-sm shadow-sky-900/15 hover:from-sky-700 hover:to-sky-800"
                   >
                     {lang === "zh" ? "保存" : "Save"}
@@ -239,6 +258,26 @@ export function SettingsActionsClient({
           })}
         </div>
       </section>
+
+      <ConfirmDialog
+        open={priceConfirm != null}
+        title={lang === "zh" ? "确认修改单价？" : "Update lesson price?"}
+        description={
+          priceConfirm
+            ? t.confirmPriceChange(priceConfirm.label, priceConfirm.from, priceConfirm.to)
+            : ""
+        }
+        cancelLabel={lang === "zh" ? "取消" : "Cancel"}
+        confirmLabel={lang === "zh" ? "确认保存" : "Save"}
+        onCancel={() => setPriceConfirm(null)}
+        onConfirm={() => {
+          if (!priceConfirm) return;
+          const form = document.getElementById(`mode-price-form-${priceConfirm.code}`) as HTMLFormElement | null;
+          allowPriceSubmitRef.current = priceConfirm.code;
+          setPriceConfirm(null);
+          form?.requestSubmit();
+        }}
+      />
     </>
   );
 }

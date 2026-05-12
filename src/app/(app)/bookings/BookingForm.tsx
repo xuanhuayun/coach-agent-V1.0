@@ -17,6 +17,11 @@ import {
 } from "@/lib/booking-draft";
 import { NextBookingPicker } from "@/components/NextBookingPicker";
 import { futureBookingStartError, isFutureBookingStart } from "@/lib/booking-time";
+import {
+  BOOKING_REPEAT_DEFAULT_COUNT,
+  BOOKING_REPEAT_MAX_COUNT,
+  type BookingRepeatType,
+} from "@/lib/booking-recurrence";
 
 type Venue = { id: string; name: string };
 type Mode = {
@@ -263,6 +268,57 @@ export function BookingForm({
             <div className="mt-1 select-text text-sm text-red-700">{fieldErr.time}</div>
           ) : null}
         </div>
+      </div>
+
+      <div className="grid gap-4 sm:grid-cols-2">
+        <div>
+          <label className="block text-sm font-medium text-slate-900">
+            {lang === "zh" ? "重复约课" : "Repeat booking"}
+          </label>
+          <select
+            name="bookingRepeatType"
+            value={draft.repeatType}
+            onChange={(e) =>
+              patchDraft({
+                repeatType: e.target.value as BookingRepeatType,
+                repeatCount:
+                  e.target.value === "none" ? BOOKING_REPEAT_DEFAULT_COUNT : draft.repeatCount,
+              })
+            }
+            className="mt-2 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-sky-600 focus:ring-2 focus:ring-sky-500/25"
+          >
+            <option value="none">{lang === "zh" ? "不重复" : "No repeat"}</option>
+            <option value="weekly">{lang === "zh" ? "每周重复" : "Weekly"}</option>
+            <option value="biweekly">{lang === "zh" ? "每两周重复" : "Every 2 weeks"}</option>
+            <option value="monthly">{lang === "zh" ? "每月重复" : "Monthly"}</option>
+          </select>
+        </div>
+
+        {draft.repeatType !== "none" ? (
+          <div>
+            <label className="block text-sm font-medium text-slate-900">
+              {lang === "zh" ? "重复次数（最多 20 次）" : "Repeat count (max 20)"}
+            </label>
+            <input
+              type="number"
+              name="bookingRepeatCount"
+              min={1}
+              max={BOOKING_REPEAT_MAX_COUNT}
+              value={draft.repeatCount}
+              onChange={(e) => {
+                const parsed = Number.parseInt(e.target.value, 10);
+                patchDraft({
+                  repeatCount: Number.isFinite(parsed)
+                    ? Math.min(BOOKING_REPEAT_MAX_COUNT, Math.max(1, parsed))
+                    : BOOKING_REPEAT_DEFAULT_COUNT,
+                });
+              }}
+              className="mt-2 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-sky-600 focus:ring-2 focus:ring-sky-500/25"
+            />
+          </div>
+        ) : (
+          <input type="hidden" name="bookingRepeatCount" value="1" />
+        )}
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2">
