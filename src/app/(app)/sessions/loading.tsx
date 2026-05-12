@@ -1,5 +1,7 @@
 import { SessionsPageSkeleton } from "@/components/loading/PageSkeletons";
+import { getLang } from "@/lib/i18n-server";
 
-export default function Loading() {
-  return <SessionsPageSkeleton />;
+export default async function Loading() {
+  const lang = await getLang();
+  return <SessionsPageSkeleton lang={lang} />;
 }

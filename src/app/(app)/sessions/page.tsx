@@ -2,7 +2,7 @@ import { Suspense } from "react";
 import { getLang } from "@/lib/i18n-server";
 import { dict } from "@/lib/i18n";
 import { singaporeTodayYmd } from "@/lib/singapore-date";
-import { ListCardSkeleton, SkeletonBlock } from "@/components/loading/PageSkeletons";
+import { PanelLoadingFallback, SectionLoadingFallback } from "@/components/loading/PageSkeletons";
 import { SessionLogSection } from "./SessionLogSection";
 import { SessionsHistorySection } from "./SessionsHistorySection";
 import { SessionsPaymentsSection } from "./SessionsPaymentsSection";
@@ -33,19 +33,19 @@ export default async function SessionsPage({
         </p>
       </div>
 
-      <Suspense fallback={<ListCardSkeleton rows={2} />}>
+      <Suspense fallback={<SectionLoadingFallback rows={2} />}>
         <SessionsPendingSection />
       </Suspense>
 
-      <Suspense fallback={<ListCardSkeleton rows={3} />}>
+      <Suspense fallback={<SectionLoadingFallback rows={3} />}>
         <SessionsPaymentsSection />
       </Suspense>
 
-      <Suspense fallback={<SkeletonBlock className="h-12 w-full rounded-2xl" />}>
+      <Suspense fallback={<PanelLoadingFallback />}>
         <SessionLogSection />
       </Suspense>
 
-      <Suspense fallback={<ListCardSkeleton rows={4} />}>
+      <Suspense fallback={<SectionLoadingFallback rows={4} />}>
         <SessionsHistorySection initialMonthKey={initialMonthKey} />
       </Suspense>
     </div>

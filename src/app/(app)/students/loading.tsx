@@ -1,5 +1,7 @@
 import { StudentsPageSkeleton } from "@/components/loading/PageSkeletons";
+import { getLang } from "@/lib/i18n-server";
 
-export default function Loading() {
-  return <StudentsPageSkeleton />;
+export default async function Loading() {
+  const lang = await getLang();
+  return <StudentsPageSkeleton lang={lang} />;
 }

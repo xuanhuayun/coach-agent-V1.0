@@ -1,7 +1,7 @@
 import { Suspense } from "react";
 import { getLang } from "@/lib/i18n-server";
 import { dict } from "@/lib/i18n";
-import { ListCardSkeleton, SkeletonBlock } from "@/components/loading/PageSkeletons";
+import { PanelLoadingFallback, SectionLoadingFallback } from "@/components/loading/PageSkeletons";
 import { singaporeTodayYmd } from "@/lib/singapore-date";
 import { BookingPanelSection } from "./BookingPanelSection";
 import { BookingsFutureSection } from "./BookingsFutureSection";
@@ -23,15 +23,15 @@ export default async function BookingsTodayPage({
     <div className="max-w-3xl space-y-6">
       <h1 className="text-lg font-semibold tracking-tight text-slate-900">{d.nav_bookings}</h1>
 
-      <Suspense fallback={<ListCardSkeleton rows={3} />}>
+      <Suspense fallback={<SectionLoadingFallback rows={3} />}>
         <BookingsTodaySection selectedYmd={selectedYmd} todayYmd={todayYmd} />
       </Suspense>
 
-      <Suspense fallback={<SkeletonBlock className="h-12 w-full rounded-2xl" />}>
+      <Suspense fallback={<PanelLoadingFallback />}>
         <BookingPanelSection />
       </Suspense>
 
-      <Suspense fallback={<ListCardSkeleton rows={2} />}>
+      <Suspense fallback={<SectionLoadingFallback rows={2} />}>
         <BookingsFutureSection />
       </Suspense>
     

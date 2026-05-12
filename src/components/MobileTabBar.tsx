@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useLinkStatus } from "next/link";
 import { usePathname } from "next/navigation";
 
 const tabs = [
@@ -10,6 +11,33 @@ const tabs = [
   { href: "/revenue", match: (p: string) => p.startsWith("/revenue") },
   { href: "/settings", match: (p: string) => p.startsWith("/settings") },
 ] as const;
+
+function MobileTabLinkContent({
+  label,
+  href,
+}: {
+  label: string;
+  href: (typeof tabs)[number]["href"];
+}) {
+  const { pending } = useLinkStatus();
+
+  return (
+    <>
+      <span className="text-sm leading-none" aria-hidden>
+        {href === "/bookings"
+          ? "🗓️"
+          : href === "/sessions"
+            ? "📚"
+            : href === "/students"
+              ? "👥"
+              : href === "/revenue"
+                ? "📊"
+                : "⚙️"}
+      </span>
+      <span className="mt-0.5 line-clamp-2 text-center">{pending ? "请稍等…" : label}</span>
+    </>
+  );
+}
 
 export function MobileTabBar({
   labels,
@@ -32,24 +60,13 @@ export function MobileTabBar({
               key={tab.href}
               href={tab.href}
               prefetch
-              className={`flex min-h-14 min-w-0 flex-1 touch-manipulation flex-col items-center justify-center rounded-2xl px-2 py-2 text-xs font-semibold leading-tight transition-colors ${
+              className={`relative flex min-h-14 min-w-0 flex-1 touch-manipulation flex-col items-center justify-center rounded-2xl px-2 py-2 text-xs font-semibold leading-tight transition-colors ${
                 active
                   ? "bg-sky-100/90 text-sky-950 shadow-inner shadow-sky-200/50"
                   : "text-slate-600 active:bg-sky-50/80"
               }`}
             >
-              <span className="text-sm leading-none" aria-hidden>
-                {tab.href === "/bookings"
-                  ? "🗓️"
-                  : tab.href === "/sessions"
-                    ? "📚"
-                    : tab.href === "/students"
-                      ? "👥"
-                      : tab.href === "/revenue"
-                        ? "📊"
-                        : "⚙️"}
-              </span>
-              <span className="mt-0.5 line-clamp-2 text-center">{label}</span>
+              <MobileTabLinkContent label={label} href={tab.href} />
             </Link>
           );
         })}
